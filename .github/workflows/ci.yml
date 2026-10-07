@@ -84,3 +84,20 @@ jobs:
       # Turbo respeta el orden topológico (`dependsOn: ^build`).
       - name: Verify
         run: pnpm verify
+
+      # Diagnóstico ante fallo: el error típico (42P01 en resetDatabase) no
+      # dice en qué schema quedaron las tablas, así que se vuelca el estado
+      # real de Postgres para poder distinguir "migraciones no aplicadas" de
+      # "migraciones aplicadas al schema equivocado".
+      - name: Dump database state on failure
+        if: failure()
+        env:
+          PGPASSWORD: negocia
+        run: |
+          psql -h localhost -U negocia -d negocia -c \
+            "select table_schema, count(*) as tables from information_schema.tables where table_schema not in ('pg_catalog','information_schema') group by table_schema order by table_schema;"
+          psql -h localhost -U negocia -d negocia -c \
+            "select schemaname, tablename from pg_tables where schemaname in ('public','negocia_test') order by schemaname, tablename;"
+          echo '--- migrate deploy (test URL) ---'
+          cd packages/database
+          DATABASE_URL="$TEST_DATABASE_URL" pnpm exec prisma migrate deploy
