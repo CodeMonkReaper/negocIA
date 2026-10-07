@@ -33,20 +33,10 @@ export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const handlerMetadata = this.reflector.get<boolean>(IS_PUBLIC_KEY, context.getHandler());
-    const classMetadata = this.reflector.get<boolean>(IS_PUBLIC_KEY, context.getClass());
     const allMetadata = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-
-    console.log("[RolesGuard] Metadata check:", {
-      handler: context.getHandler()?.name,
-      class: context.getClass()?.name,
-      handlerMetadata,
-      classMetadata,
-      allMetadata,
-    });
 
     // Si la ruta es pública, no aplicamos restricciones de rol
     if (allMetadata) {

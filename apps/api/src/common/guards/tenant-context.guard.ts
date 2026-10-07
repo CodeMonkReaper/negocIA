@@ -53,11 +53,6 @@ export class TenantContextGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    console.log("[TenantContextGuard] Route is public:", isPublic, {
-      handler: context.getHandler()?.name,
-      class: context.getClass()?.name,
-    });
-
     if (isPublic) {
       return true;
     }
