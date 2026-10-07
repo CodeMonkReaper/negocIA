@@ -46,6 +46,8 @@ const ACCOUNT: WhatsappAccountRecord = {
   displayPhone: null,
   accessToken: "token-waba",
   accessTokenEncrypted: { iv: "", ciphertext: "", tag: "" },
+  tokenExpiresAt: null,
+  tokenRefreshedAt: null,
   status: "ACTIVE",
   createdAt: new Date("2026-01-01T00:00:00Z"),
   updatedAt: new Date("2026-01-01T00:00:00Z"),
@@ -181,6 +183,14 @@ class AccountStub implements WhatsappAccountRepository {
 
   async updateAccessToken() {
     return unusedCall("updateAccessToken");
+  }
+
+  async findExpiringBefore() {
+    return unusedCall("findExpiringBefore");
+  }
+
+  async markTokenExpired() {
+    return unusedCall("markTokenExpired");
   }
 }
 

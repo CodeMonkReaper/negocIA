@@ -11,12 +11,16 @@ export interface CreateWhatsappAccountInput {
   phoneNumberId: string;
   displayPhone?: string | null;
   accessToken: string;
+  /** Vencimiento del token dado por Meta (`now + expires_in`). */
+  tokenExpiresAt?: Date | null;
 }
 
 export interface UpdateWhatsappAccountInput {
   id: string;
   tenantId: string;
   accessToken: string;
+  /** Nuevo vencimiento tras renovar/re-firmar; NULL = desconocido. */
+  tokenExpiresAt?: Date | null;
 }
 
 /**
@@ -34,6 +38,14 @@ export interface WhatsappAccountRepository {
    */
   findById(tenantId: string, id: string): Promise<WhatsappAccountRecord | null>;
   listByTenant(tenantId: string): Promise<WhatsappAccountRecord[]>;
+  /**
+   * Cuentas cuyo token vence en o antes de `date` (o cuya expiración se
+   * desconoce, `token_expires_at IS NULL`) y no están desactivadas: son las
+   * candidatas a renovación por `fb_exchange_token`.
+   */
+  findExpiringBefore(date: Date): Promise<WhatsappAccountRecord[]>;
   create(input: CreateWhatsappAccountInput): Promise<WhatsappAccountRecord>;
   updateAccessToken(input: UpdateWhatsappAccountInput): Promise<WhatsappAccountRecord>;
+  /** Marca la cuenta con token vencido (error 190/401 detectado en un envío). */
+  markTokenExpired(id: string): Promise<void>;
 }

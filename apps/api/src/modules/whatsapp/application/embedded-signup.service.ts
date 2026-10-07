@@ -103,9 +103,13 @@ export class EmbeddedSignupService {
 
     // 2. Intercambiar code por access_token (60 días)
     let accessToken: string;
+    let tokenExpiresAt: Date;
     try {
       const result = await this.metaOAuth.exchangeCodeForToken(code);
       accessToken = result.accessToken;
+      // Meta devuelve seconds-to-expiry; el default de 60 días ya lo aplicó el
+      // cliente OAuth si la respuesta no trajo `expires_in`.
+      tokenExpiresAt = new Date(Date.now() + result.expiresIn * 1_000);
     } catch {
       return { success: false, error: "embedded_signup_token_exchange_failed" };
     }
@@ -137,11 +141,13 @@ export class EmbeddedSignupService {
             { code: "whatsapp_account_conflict" },
           );
         }
-        // Actualizar token de la cuenta existente
+        // Actualizar token de la cuenta existente (re-firma dado por Meta:
+        // status vuelve a ACTIVE y se re-registra el vencimiento)
         const updated = await this.accounts.updateAccessToken({
           id: existing.id,
           tenantId: existing.tenantId,
           accessToken,
+          tokenExpiresAt,
         });
         return { success: true, account: updated, error: "" };
       }
@@ -152,6 +158,7 @@ export class EmbeddedSignupService {
         phoneNumberId: phoneNumber.id,
         displayPhone: phoneNumber.displayPhoneNumber,
         accessToken,
+        tokenExpiresAt,
       });
 
       return { success: true, account, error: "" };

@@ -16,6 +16,7 @@ import type {
   LlmToolCall,
 } from "../../../domain/ports/llm-provider";
 import type { LlmRunRepository } from "../../../domain/ports/llm-run-repository";
+import { WhatsAppTokenExpiredError } from "../../../domain/errors";
 import { TenantContextService } from "../../../common/tenant-context/tenant-context.service";
 import { ToolCatalog } from "../../../domain/llm/tool-catalog";
 import { buildPrompt } from "./prompt";
@@ -134,12 +135,26 @@ export class ConversationEngineService {
         if (!account) {
           throw new Error("Active WhatsApp account not found for conversation");
         }
-        const sent = await this.wa.sendTextMessage({
-          to: conversation.customerWaId,
-          text: res.text,
-          phoneNumberId: account.phoneNumberId,
-          accessToken: account.accessToken,
-        });
+        let sent;
+        try {
+          sent = await this.wa.sendTextMessage({
+            to: conversation.customerWaId,
+            text: res.text,
+            phoneNumberId: account.phoneNumberId,
+            accessToken: account.accessToken,
+          });
+        } catch (error) {
+          // Token muerto detectado en el envío: marcar para que la renovación
+          // programada la re-firme y el siguiente envío no use un token muerto.
+          if (error instanceof WhatsAppTokenExpiredError) {
+            try {
+              await this.accounts.markTokenExpired(account.id);
+            } catch {
+              // Best-effort: no ocultar el error real del envío.
+            }
+          }
+          throw error;
+        }
         const out = await this.conv.recordOutboundMessage(
           { tenantId, conversationId },
           {

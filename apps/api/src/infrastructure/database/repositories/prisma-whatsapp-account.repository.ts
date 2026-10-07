@@ -24,6 +24,8 @@ function toAccountRecord(row: {
   phoneNumberId: string;
   displayPhone: string | null;
   accessTokenEncrypted: Prisma.JsonValue;
+  tokenExpiresAt: Date | null;
+  tokenRefreshedAt: Date | null;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -38,6 +40,8 @@ function toAccountRecord(row: {
     displayPhone: row.displayPhone,
     accessToken,
     accessTokenEncrypted: encrypted,
+    tokenExpiresAt: row.tokenExpiresAt,
+    tokenRefreshedAt: row.tokenRefreshedAt,
     status: row.status,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -78,11 +82,32 @@ export class PrismaWhatsappAccountRepository implements WhatsappAccountRepositor
     return rows.map((row) => toAccountRecord(row, this.crypto));
   }
 
+  async findExpiringBefore(date: Date): Promise<WhatsappAccountRecord[]> {
+    const rows = await this.db.whatsappAccount.findMany({
+      where: {
+        status: { in: ["ACTIVE", "TOKEN_EXPIRED"] },
+        AND: [
+          {
+            OR: [
+              { tokenExpiresAt: { lte: date } },
+              // Cuentas sin vencimiento registrado: mejor re-firmar que dejar
+              // que el token caiga en silencio, así se fechan en el intento.
+              { tokenExpiresAt: null },
+            ],
+          },
+        ],
+      },
+      orderBy: [{ tokenExpiresAt: { sort: "asc", nulls: "first" } }],
+    });
+    return rows.map((row) => toAccountRecord(row, this.crypto));
+  }
+
   async create(
     input: CreateWhatsappAccountInput,
   ): Promise<WhatsappAccountRecord> {
     try {
       const encrypted = this.crypto.encrypt(input.accessToken);
+      const tokenExpiresAt = input.tokenExpiresAt ?? null;
       const row = await this.db.whatsappAccount.create({
         data: {
           ...(input.id ? { id: input.id } : {}),
@@ -91,6 +116,8 @@ export class PrismaWhatsappAccountRepository implements WhatsappAccountRepositor
           phoneNumberId: input.phoneNumberId,
           displayPhone: input.displayPhone ?? null,
           accessTokenEncrypted: encrypted as unknown as Prisma.InputJsonValue,
+          tokenExpiresAt,
+          tokenRefreshedAt: tokenExpiresAt ? new Date() : null,
         },
       });
       return toAccountRecord(row, this.crypto);
@@ -104,14 +131,36 @@ export class PrismaWhatsappAccountRepository implements WhatsappAccountRepositor
   ): Promise<WhatsappAccountRecord> {
     try {
       const encrypted = this.crypto.encrypt(input.accessToken);
+      const withExpiry =
+        input.tokenExpiresAt !== undefined && input.tokenExpiresAt !== null;
       const row = await this.db.whatsappAccount.update({
         where: { id: input.id },
         data: {
           accessTokenEncrypted: encrypted as unknown as Prisma.InputJsonValue,
+          // Un token re-firmado o renovado devuelve la cuenta a ACTIVE (pudo
+          // estar TOKEN_EXPIRED por un 190 detectado en un envío).
+          status: "ACTIVE",
+          ...(withExpiry
+            ? {
+                tokenExpiresAt: input.tokenExpiresAt,
+                tokenRefreshedAt: new Date(),
+              }
+            : {}),
           updatedAt: new Date(),
         },
       });
       return toAccountRecord(row, this.crypto);
+    } catch (error) {
+      throw translatePrismaError(error, "whatsapp_accounts");
+    }
+  }
+
+  async markTokenExpired(id: string): Promise<void> {
+    try {
+      await this.db.whatsappAccount.update({
+        where: { id },
+        data: { status: "TOKEN_EXPIRED", updatedAt: new Date() },
+      });
     } catch (error) {
       throw translatePrismaError(error, "whatsapp_accounts");
     }

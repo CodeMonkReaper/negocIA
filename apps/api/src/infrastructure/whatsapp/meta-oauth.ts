@@ -1,13 +1,24 @@
-import { ExternalProviderError } from "../../domain/errors";
+import {
+  ExternalProviderError,
+  WhatsAppTokenExpiredError,
+} from "../../domain/errors";
 import { safeJsonParse } from "../../common/utils/json-parser";
 
 const META_GRAPH_API_VERSION = "v21.0";
 const META_GRAPH_BASE_URL = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`;
 
+/**
+ * Duración por defecto del access_token de Meta cuando la respuesta no trae
+ * `expires_in`. Los tokens de Embedded Signup y `fb_exchange_token` viven 60
+ * días; si Meta omite el campo (respuestas incompletas), asumir los 60 días es
+ * la opción segura para que el job de renovación actúe antes de vencer.
+ */
+export const DEFAULT_TOKEN_TTL_SECONDS = 60 * 24 * 60 * 60;
+
 interface TokenExchangeResponse {
   access_token: string;
-  token_type: string;
-  expires_in: number;
+  token_type?: string;
+  expires_in?: number;
 }
 
 interface BusinessResponse {
@@ -49,6 +60,25 @@ function isBusinessResponse(body: unknown): body is BusinessResponse {
     "data" in body &&
     Array.isArray((body as BusinessResponse).data)
   );
+}
+
+/**
+ * Normaliza la respuesta de `/oauth/access_token` (tanto el intercambio de
+ * `code` como `fb_exchange_token` devuelven el mismo shape).
+ *
+ * `expires_in` puede venir ausente según Meta; como la llamada a la API ya ha
+ * validado `access_token`, aquí se aplica el default de 60 días y no se vuelve
+ * a rechazar la respuesta.
+ */
+function toExchangeResult(body: TokenExchangeResponse): {
+  accessToken: string;
+  expiresIn: number;
+} {
+  const expiresIn =
+    typeof body.expires_in === "number" && Number.isFinite(body.expires_in)
+      ? body.expires_in
+      : DEFAULT_TOKEN_TTL_SECONDS;
+  return { accessToken: body.access_token, expiresIn };
 }
 
 function isWabaResponse(body: unknown): body is WabaResponse {
@@ -137,10 +167,64 @@ export class MetaOAuthClient {
       );
     }
 
-    return {
-      accessToken: rawBody.access_token,
-      expiresIn: rawBody.expires_in,
-    };
+    return toExchangeResult(rawBody);
+  }
+
+  /**
+   * Renueva un access_token de larga duración con `fb_exchange_token`.
+   *
+   * GET /oauth/access_token?grant_type=fb_exchange_token&...
+   *
+   * Meta devuelve otro token de larga duración (60 días) a partir del vigente,
+   * sin que el usuario vuelva a autorizar. Es la base de la renovación
+   * programada del canal: un token vencido (error 190 de Graph) no se puede
+   * renovar con el token mismo, así que la renovación debe ocurrir **antes** de
+   * vencer, y una cuenta ya vencida solo se recupera con re-signup.
+   *
+   * La `redirect_uri` que exige este endpoint es la misma del Embedded Signup.
+   */
+  async exchangeLongLivedToken(shortLivedToken: string): Promise<{
+    accessToken: string;
+    expiresIn: number;
+  }> {
+    const params = new URLSearchParams({
+      grant_type: "fb_exchange_token",
+      client_id: this.appId,
+      client_secret: this.appSecret,
+      redirect_uri: this.redirectUri,
+      fb_exchange_token: shortLivedToken,
+    });
+
+    const response = await fetch(
+      `${this.baseUrl}/oauth/access_token?${params.toString()}`,
+    );
+
+    const rawBody = await safeJsonParse<TokenExchangeResponse>(response);
+
+    if (!response.ok || !isTokenExchangeResponse(rawBody)) {
+      // 401 o error 190 = el token a renovar ya está muerto: no tiene sentido
+      // reintentar, y el servicio de renovación debe marcar la cuenta vencida.
+      if (response.status === 401 || this.isTokenExpired(rawBody)) {
+        throw new WhatsAppTokenExpiredError(
+          "Meta OAuth: el token de larga duración ya expiró",
+          { status: response.status, body: rawBody },
+        );
+      }
+      throw new ExternalProviderError(
+        "Meta OAuth: error renovando token de larga duración",
+        { status: response.status, body: rawBody },
+      );
+    }
+
+    return toExchangeResult(rawBody);
+  }
+
+  private isTokenExpired(body: unknown): boolean {
+    if (typeof body !== "object" || body === null || !("error" in body)) {
+      return false;
+    }
+    const error = (body as { error?: { code?: number } }).error;
+    return error?.code === 190;
   }
 
   /**

@@ -182,7 +182,14 @@ model WhatsappAccount {
   // Token cifrado (AES-256-GCM). Formato: { iv, ciphertext, tag } en base64.
   // M8.5.1: ersetzt `accessToken` plano por seguridad.
   accessTokenEncrypted Json     @map("access_token_encrypted")
-  status            String    @default("ACTIVE")
+  // Vencimiento del access_token de Meta (60 días desde el intercambio o la
+  // última renovación con fb_exchange_token). NULL = desconocido (cuentas
+  // creadas antes de esta columna): el job de renovación las trata como
+  // candidatas para fecharlas. token_refreshed_at registra la última
+  // renovación exitosa (diagnóstico).
+  tokenExpiresAt       DateTime? @map("token_expires_at") @db.Timestamptz(6)
+  tokenRefreshedAt     DateTime? @map("token_refreshed_at") @db.Timestamptz(6)
+  status               String    @default("ACTIVE")
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)

@@ -71,6 +71,8 @@ function account(phoneNumberId: string): WhatsappAccountRecord {
       ciphertext: "dGVzdC1jaXBoZXJ0ZXh0",
       tag: "dGVzdC10YWc=",
     },
+    tokenExpiresAt: null,
+    tokenRefreshedAt: null,
     status: "ACTIVE",
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-01-01T00:00:00Z"),
@@ -134,6 +136,14 @@ class FakeAccounts implements WhatsappAccountRepository {
     }
     // In a real implementation, we'd encrypt the token here
     return record;
+  }
+
+  async findExpiringBefore(): Promise<WhatsappAccountRecord[]> {
+    return [];
+  }
+
+  async markTokenExpired(): Promise<void> {
+    // no-op en estos tests de webhook
   }
 }
 

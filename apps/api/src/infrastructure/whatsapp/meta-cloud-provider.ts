@@ -1,4 +1,7 @@
-import { ExternalProviderError } from "../../domain/errors";
+import {
+  ExternalProviderError,
+  WhatsAppTokenExpiredError,
+} from "../../domain/errors";
 import { safeJsonParse } from "../../common/utils/json-parser";
 import type {
   SendTextMessageInput,
@@ -70,7 +73,7 @@ export class MetaCloudProvider implements WhatsappProvider {
     const rawBody: unknown = await safeJsonParse(response);
 
     if (!response.ok) {
-      throw this.toProviderError(rawBody);
+      throw this.toProviderError(rawBody, response.status);
     }
 
     if (!isMetaMessagesResponse(rawBody)) {
@@ -92,16 +95,23 @@ export class MetaCloudProvider implements WhatsappProvider {
     return { providerMessageId };
   }
 
-  private toProviderError(body: unknown): ExternalProviderError {
+  private toProviderError(body: unknown, status?: number): ExternalProviderError {
     const error = isMetaErrorResponse(body) ? body.error : undefined;
     const message =
       typeof error?.message === "string" && error.message.length > 0
         ? error.message
         : "Meta rechazó el envío del mensaje";
-    return new ExternalProviderError(message, {
+    // Código 190 de Graph = sesión/token de acceso inválido o expirado; 401 es
+    // el mismo caso por HTTP. Marcar la cuenta permite avisar y renovar.
+    const tokenExpired = status === 401 || error?.code === 190;
+    const details = {
       code: error?.code,
       errorSubcode: error?.error_subcode,
       type: error?.type,
-    });
+      status,
+    };
+    return tokenExpired
+      ? new WhatsAppTokenExpiredError(message, details)
+      : new ExternalProviderError(message, details);
   }
 }

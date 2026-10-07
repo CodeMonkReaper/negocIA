@@ -108,6 +108,22 @@ export class ExternalProviderError extends AppError {
   }
 }
 
+/**
+ * Token de Meta vencido o inválido (código 190 de Graph, o 401 HTTP).
+ *
+ * Sigue siendo un `ExternalProviderError` (502, `external_provider_error`) para
+ * no cambiar el contrato con los clientes; `tokenExpired` permite al dominio
+ * (envío de mensajes y renovación programada) marcar la cuenta como
+ * `TOKEN_EXPIRED` y dejar de usar un token muerto.
+ */
+export class WhatsAppTokenExpiredError extends ExternalProviderError {
+  readonly tokenExpired = true;
+
+  constructor(message = "Token de Meta vencido o inválido", details?: unknown) {
+    super(message, details);
+  }
+}
+
 export class LlmError extends AppError {
   readonly status = 502;
 

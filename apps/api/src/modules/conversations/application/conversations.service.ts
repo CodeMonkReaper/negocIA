@@ -10,7 +10,7 @@ import type {
   ListConversationsOptions,
   ListMessagesOptions,
 } from "../../../domain/ports/conversation-repository";
-import { NotFoundError } from "../../../domain/errors";
+import { NotFoundError, WhatsAppTokenExpiredError } from "../../../domain/errors";
 import type { ConversationRecord, MessageRecord } from "../../../domain/conversations/entities";
 import { parseDeliveryStatusUpdates, parseInboundMessages } from "../../../domain/conversations/meta-message.mapper";
 import type { WhatsappAccountRepository } from "../../../domain/ports/whatsapp-account-repository";
@@ -131,12 +131,26 @@ export class ConversationsService {
       throw new NotFoundError("not_found", "Conversación no encontrada");
     }
 
-    const sent = await this.whatsapp.sendTextMessage({
-      phoneNumberId: account.phoneNumberId,
-      accessToken: account.accessToken,
-      to: conversation.customerWaId,
-      text: input.text,
-    });
+    let sent;
+    try {
+      sent = await this.whatsapp.sendTextMessage({
+        phoneNumberId: account.phoneNumberId,
+        accessToken: account.accessToken,
+        to: conversation.customerWaId,
+        text: input.text,
+      });
+    } catch (error) {
+      // Token muerto (190/401): avisar marcando la cuenta; el próximo envío
+      // caerá como no-existente y la renovación programada la re-firmará.
+      if (error instanceof WhatsAppTokenExpiredError) {
+        try {
+          await this.accounts.markTokenExpired(account.id);
+        } catch {
+          // Best-effort: si la anotación falla no se debe ocultar el 502 real.
+        }
+      }
+      throw error;
+    }
 
     return this.conversations.recordOutboundMessage(
       { tenantId: input.tenantId, conversationId: conversation.id },

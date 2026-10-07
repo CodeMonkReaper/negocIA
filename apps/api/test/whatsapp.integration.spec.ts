@@ -264,4 +264,80 @@ describe("PrismaWhatsappAccountRepository (integration)", () => {
     expect(listA[0].phoneNumberId).toBe("573001234567");
     expect(await ctx.accounts.listByTenant(tenantB)).toHaveLength(1);
   });
+
+  it("persiste el vencimiento del token y la última renovación", async () => {
+    const expiresAt = new Date("2026-12-31T00:00:00.000Z");
+    await ctx.accounts.create({
+      tenantId: tenantA,
+      wabaId: "waba-1",
+      phoneNumberId: "573001234567",
+      accessToken: "token",
+      tokenExpiresAt: expiresAt,
+    });
+
+    const found = await ctx.accounts.findByPhoneNumberId("573001234567");
+    expect(found?.tokenExpiresAt?.toISOString()).toBe(expiresAt.toISOString());
+    expect(found?.tokenRefreshedAt).not.toBeNull();
+  });
+
+  it("findExpiringBefore alcanza solo las vencidas y las de vencimiento desconocido", async () => {
+    const soon = new Date(Date.now() - 1_000);
+    const far = new Date(Date.now() + 90 * 24 * 60 * 60 * 1_000);
+
+    const vencida = await ctx.accounts.create({
+      tenantId: tenantA,
+      wabaId: "waba-1",
+      phoneNumberId: "573001234567",
+      accessToken: "token",
+      tokenExpiresAt: soon,
+    });
+    const futura = await ctx.accounts.create({
+      tenantId: tenantA,
+      wabaId: "waba-2",
+      phoneNumberId: "573009999998",
+      accessToken: "token",
+      tokenExpiresAt: far,
+    });
+    // Sin vencimiento registrado (cuenta de antes de la columna): candidata.
+    const desconocida = await ctx.accounts.create({
+      tenantId: tenantB,
+      wabaId: "waba-3",
+      phoneNumberId: "573007777777",
+      accessToken: "token",
+    });
+
+    const dueIds = (await ctx.accounts.findExpiringBefore(new Date())).map(
+      (a) => a.id,
+    );
+
+    expect(dueIds).toContain(vencida.id);
+    expect(dueIds).toContain(desconocida.id);
+    expect(dueIds).not.toContain(futura.id);
+  });
+
+  it("markTokenExpired la excluye de los envíos y el refresh la reactiva con token nuevo", async () => {
+    const account = await ctx.accounts.create({
+      tenantId: tenantA,
+      wabaId: "waba-1",
+      phoneNumberId: "573001234567",
+      accessToken: "token-viejo",
+      tokenExpiresAt: new Date(Date.now() - 1_000),
+    });
+
+    await ctx.accounts.markTokenExpired(account.id);
+
+    expect((await ctx.accounts.findById(tenantA, account.id))).toBeNull();
+
+    const renewed = await ctx.accounts.updateAccessToken({
+      id: account.id,
+      tenantId: tenantA,
+      accessToken: "token-nuevo",
+      tokenExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1_000),
+    });
+
+    expect(renewed.status).toBe("ACTIVE");
+    expect(renewed.accessToken).toBe("token-nuevo");
+    expect(await ctx.accounts.findById(tenantA, account.id)).not.toBeNull();
+    expect(renewed.tokenRefreshedAt).not.toBeNull();
+  });
 });
