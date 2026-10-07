@@ -11,6 +11,6 @@ allowBuilds:
   "@tailwindcss/oxide": true
   argon2: true
   esbuild: true
-  msgpackr-extract: set this to true or false
+  msgpackr-extract: true
   prisma: true
   unrs-resolver: true
