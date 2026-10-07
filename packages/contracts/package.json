@@ -1,0 +1,20 @@
+{
+  "name": "@negocia/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tipos/contratos de wire compartidos entre API y web. Sin dependencias de persistencia.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@negocia/eslint-config": "workspace:*",
+    "eslint": "9.39.5",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.1"
+  }
+}

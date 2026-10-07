@@ -1,0 +1,311 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// Modelo de identidad (Fase 1) — definido en docs/database/schema.md
+//
+// Clasificación de tenencia:
+//   - Global:        Tenant, User
+//   - Tenant-scoped: Membership, Invitation
+//   - System-scoped: RefreshToken, VerificationToken
+//
+// Convenciones:
+//   - IDs uuid generados en BD (gen_random_uuid(); nativo en PostgreSQL 17).
+//   - timestamptz; updated_at se actualiza desde la aplicación (@updatedAt).
+//   - Enums como TEXT + CHECK (agregados por SQL raw en la migración):
+//     evolucionar un status no requiere ALTER TYPE.
+//   - Emails: columna text + UNIQUE + índice lower(email) (fallback permitido
+//     en schema.md §4; la normalización lowercase/trim ocurre en la aplicación).
+// =============================================================================
+
+model Tenant {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String       @unique
+  name        String
+  plan        String       @default("BASIC")
+  status      String       @default("ACTIVE")
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  memberships Membership[]
+  invitations Invitation[]
+  whatsappAccounts WhatsappAccount[]
+  whatsappEvents  WhatsappEvent[]
+  conversations   Conversation[]
+  messages        Message[]
+  llmRuns         LlmRun[]
+
+  @@map("tenants")
+}
+
+model User {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email               String             @unique
+  passwordHash        String             @map("password_hash")
+  name                String
+  status              String             @default("ACTIVE")
+  emailVerifiedAt     DateTime?          @map("email_verified_at") @db.Timestamptz(6)
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  memberships         Membership[]
+  refreshTokens       RefreshToken[]
+  verificationTokens  VerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+  invitationsCreated  Invitation[]       @relation("InvitationsCreated")
+  invitationsAccepted Invitation[]       @relation("InvitationsAccepted")
+
+  @@map("users")
+}
+
+model Membership {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      String
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model RefreshToken {
+  id    String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  // Ancla de la familia de refrescos (= id de la fila raíz, auth.md §6).
+  // SIN FK a propósito: una auto-FK con ON DELETE RESTRICT impediría borrar
+  // la raíz mientras existieran descendientes. La raíz se cumple como
+  // sesión = { id: session_id } (session_id === id).
+  sessionId String         @map("session_id") @db.Uuid
+  // Tenant activo de la sesión. El access token solo vive 15 min, así que la
+  // fila de refresco es lo único que permite reconstruir `tenant_id` cuando el
+  // cliente renueva una sesión caducada. Tabla system-scoped (sin RLS), pero
+  // el dato es de negocio: no confundir con el aislamiento por tenant.
+  tenantId  String         @map("tenant_id") @db.Uuid
+  tokenHash String         @unique @map("token_hash")
+  expiresAt DateTime       @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime?      @map("revoked_at") @db.Timestamptz(6)
+  replacedById String?        @unique @map("replaced_by_token_id") @db.Uuid
+  replacedBy   RefreshToken?  @relation("RefreshChain", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces     RefreshToken[] @relation("RefreshChain")
+  ip           String?
+  userAgent    String?        @map("user_agent")
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([userId, expiresAt])
+  @@index([sessionId])
+  @@index([tenantId])
+  @@map("refresh_tokens")
+}
+
+model Invitation {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  email          String
+  role           String
+  invitedBy      String    @map("invited_by") @db.Uuid
+  tokenHash      String    @unique @map("token_hash")
+  status         String    @default("PENDING")
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  acceptedAt     DateTime? @map("accepted_at") @db.Timestamptz(6)
+  acceptedBy     String?   @map("accepted_by") @db.Uuid
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedByUser  User      @relation("InvitationsCreated", fields: [invitedBy], references: [id], onDelete: Restrict)
+  acceptedByUser User?     @relation("InvitationsAccepted", fields: [acceptedBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([status, expiresAt])
+  @@map("invitations")
+}
+
+model VerificationToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// =============================================================================
+// Canal Meta WhatsApp (F2-3) — definido en docs/database/schema.md §10 y
+// docs/architecture/whatsapp.md.
+//
+// Clasificación de tenencia:
+//   - Tenant-scoped:  WhatsappAccount (la cuenta pertenece al tenant)
+//   - System-scoped:  WhatsappEvent (evento crudo del webhook; el resolver de
+//                     cuenta deriva tenant/account, opcional si es desconocida)
+//
+// Idempotencia: `provider_event_id` es UNIQUE global (diseño §14): Meta reenvía
+// eventos, y el constraint evita un segundo mensaje/pedido/reserva/envío.
+// =============================================================================
+
+model WhatsappAccount {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  wabaId            String    @map("waba_id")
+  phoneNumberId     String    @map("phone_number_id")
+  displayPhone      String?   @map("display_phone")
+  // Token cifrado (AES-256-GCM). Formato: { iv, ciphertext, tag } en base64.
+  // M8.5.1: ersetzt `accessToken` plano por seguridad.
+  accessTokenEncrypted Json     @map("access_token_encrypted")
+  status            String    @default("ACTIVE")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  events            WhatsappEvent[]
+  conversations     Conversation[]
+
+  @@unique([tenantId, wabaId])
+  @@unique([tenantId, phoneNumberId])
+  @@index([tenantId])
+  @@map("whatsapp_accounts")
+}
+
+model WhatsappEvent {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // Global unique: los ids de Meta (wamid.*, etc.) son únicos entre tenants.
+  providerEventId String            @unique @map("provider_event_id")
+  // Opcionales: si en el payload no hay cuenta registrada (tenant desconocido),
+  // el webhook ignora el evento (204) y no asigna account/tenant.
+  tenantId        String?           @map("tenant_id") @db.Uuid
+  accountId       String?           @map("account_id") @db.Uuid
+  eventType       String            @map("event_type")
+  payload         Json              @db.JsonB
+  status          String            @default("RECEIVED")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  processedAt     DateTime?         @map("processed_at") @db.Timestamptz(6)
+  account         WhatsappAccount?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  tenant          Tenant?           @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@index([status, createdAt])
+  @@map("whatsapp_events")
+}
+
+// =============================================================================
+// Conversaciones y mensajes del canal (F2-4) — docs/database/schema.md §11.
+//
+// Clasificación de tenencia: Tenant-scoped.
+//   - conversations: UNIQUE (tenant_id, account_id, customer_wa_id) materializa
+//     "una conversación por cliente y cuenta". customer_wa_id es el `wa_id` de
+//     Meta; el id interno del CRM llega en F6 con el modelo de contactos.
+//   - messages.provider_message_id es UNIQUE global: los ids de Meta (wamid.*)
+//     son únicos y son la frontera de idempotencia en la escritura.
+//
+// `assigned_user_id` y `mode` se añadirán con el traspaso a humano (F6-3);
+// hasta entonces la máquina de estados solo produce `BOT_ACTIVE`.
+// =============================================================================
+
+model Conversation {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String            @map("tenant_id") @db.Uuid
+  accountId     String            @map("account_id") @db.Uuid
+  customerWaId  String            @map("customer_wa_id")
+  customerName  String?           @map("customer_name")
+  status        String            @default("BOT_ACTIVE")
+  lastMessageAt DateTime?         @map("last_message_at") @db.Timestamptz(6)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  account       WhatsappAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  messages      Message[]
+  llmRuns       LlmRun[]
+
+  @@unique([tenantId, accountId, customerWaId])
+  @@index([tenantId, status, lastMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String        @map("tenant_id") @db.Uuid
+  conversationId    String        @map("conversation_id") @db.Uuid
+  // Global unique: el `wamid` de Meta identifica la pieza entre tenants y
+  // hace idempotente la reescritura del mensaje por un webhook repetido.
+  providerMessageId String        @unique @map("provider_message_id")
+  direction         String
+  type              String
+  content           String?
+  deliveryStatus    String?       @map("delivery_status")
+  metadata          Json?         @db.JsonB
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  conversation      Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  inboundLlmRuns    LlmRun[]      @relation("LlmRunInbound")
+  outboundLlmRuns   LlmRun[]      @relation("LlmRunOutbound")
+
+  @@index([tenantId])
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model LlmRun {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  conversationId     String    @map("conversation_id") @db.Uuid
+  inboundMessageId   String    @map("inbound_message_id") @db.Uuid
+  outboundMessageId  String?   @map("outbound_message_id") @db.Uuid
+  requestId          String    @unique @map("request_id")
+  status             String    @default("RUNNING")
+  driver             String
+  requestedModel     String    @map("requested_model")
+  resolvedModel      String?   @map("resolved_model")
+  finishReason       String?   @map("finish_reason")
+  promptTokens       Int       @default(0) @map("prompt_tokens")
+  completionTokens   Int       @default(0) @map("completion_tokens")
+  totalTokens        Int       @default(0) @map("total_tokens")
+  toolCalls          Int       @default(0) @map("tool_calls")
+  attempts           Int       @default(1)
+  latencyMs          Int?      @map("latency_ms")
+  errorCode          String?   @map("error_code")
+  errorMessage       String?   @map("error_message")
+  completedAt        DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  conversation Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  inbound      Message       @relation("LlmRunInbound", fields: [inboundMessageId], references: [id], onDelete: Restrict)
+  outbound     Message?      @relation("LlmRunOutbound", fields: [outboundMessageId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([conversationId, createdAt])
+  @@index([status, createdAt])
+  @@map("llm_runs")
+}

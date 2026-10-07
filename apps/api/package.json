@@ -1,0 +1,49 @@
+{
+  "name": "@negocia/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "negocIA API — NestJS (modular monolith, foundation)",
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:worker": "node dist/worker/main.js",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.mts",
+    "test:e2e": "vitest run --config vitest.e2e.config.mts",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@negocia/config": "workspace:*",
+    "@negocia/contracts": "workspace:*",
+    "@negocia/database": "workspace:*",
+    "@nestjs/common": "12.0.4",
+    "@nestjs/config": "12.0.1",
+    "@nestjs/core": "12.0.4",
+    "@nestjs/platform-express": "12.0.4",
+    "@nestjs/swagger": "12.0.1",
+    "@nestjs/throttler": "^6.7.0",
+    "argon2": "0.45.1",
+    "bullmq": "^6.3.11",
+    "class-transformer": "0.5.1",
+    "class-validator": "^0.15.1",
+    "ioredis": "^6.0.0",
+    "jose": "6.2.12",
+    "reflect-metadata": "^0.2.2",
+    "resend": "^6.32.0",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@negocia/eslint-config": "workspace:*",
+    "@nestjs/cli": "12.0.5",
+    "@nestjs/testing": "12.0.4",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.13.6",
+    "@types/supertest": "^7.2.1",
+    "eslint": "9.39.5",
+    "supertest": "7.3.0",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.1"
+  }
+}

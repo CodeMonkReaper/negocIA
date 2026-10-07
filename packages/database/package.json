@@ -1,0 +1,36 @@
+{
+  "name": "@negocia/database",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Acceso a PostgreSQL con Prisma 7: schema, migraciones y factory de PrismaClient.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "prisma generate --no-hints && tsc -p tsconfig.build.json",
+    "generate": "prisma generate",
+    "validate": "prisma validate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "push": "prisma db push",
+    "studio": "prisma studio",
+    "db:check": "tsx src/scripts/check.ts",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "prisma generate --no-hints && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@negocia/config": "workspace:*",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "dotenv": "^18.0.3"
+  },
+  "devDependencies": {
+    "@negocia/eslint-config": "workspace:*",
+    "@types/node": "^24.13.6",
+    "eslint": "9.39.5",
+    "prisma": "7.10.0",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.1"
+  }
+}

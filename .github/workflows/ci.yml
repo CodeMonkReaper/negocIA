@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: negocia
+          POSTGRES_PASSWORD: negocia
+          POSTGRES_DB: negocia
+        ports:
+          - 5432:5432
+        # El health check espera a que pg_isready responda; sin él los tests
+        # arrancarían contra una base que todavía no acepta conexiones.
+        options: >-
+          --health-cmd "pg_isready -U negocia -d negocia"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        # El readiness de e2e exige Redis arriba (`/api/health/ready` reporta
+        # las dos dependencias), y las colas BullMQ del webhook necesitan un
+        # Redis real para encolar.
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      # Mismo secreto que documenta `.env.example` (64 hex = 32 bytes, mínimo
+      # exigido por `validateEnv` para HS256). No es más que un secreto de
+      # prueba; producción se define por fuera de este workflow.
+      JWT_SECRET: 6a1b9c3d8e2f4a7b5c0d1e2f3a4b5c6d7e8f0a1b2c3d4e5f6a7b8c9d0e1f2a3b
+      JWT_ISSUER: negocia-api
+      JWT_AUDIENCE: negocia-clients
+      JWT_ACCESS_TTL_SECONDS: 900
+      JWT_REFRESH_TTL_SECONDS: 2592000
+      # Obligatorias sin default en `validateEnv`; sin ellas ningún arranque
+      # (app, worker ni suites) supera la validación de entorno.
+      REDIS_URL: redis://localhost:6379
+      META_WEBHOOK_VERIFY_TOKEN: negocia-dev-verify-token
+      META_WEBHOOK_APP_SECRET: negocia-dev-app-secret-f2-3
+      # Las suites de integración/e2e leen estas dos URL. Nunca apuntan al
+      # schema `public` de nada: `global-setup.ts` dropea y recrea
+      # `negocia_test` con `prisma migrate deploy`.
+      DATABASE_URL: postgresql://negocia:negocia@localhost:5432/negocia?schema=public
+      TEST_DATABASE_URL: postgresql://negocia:negocia@localhost:5432/negocia?schema=negocia_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `verify` cubre el ciclo completo del runbook local: lint, typecheck,
+      # build, tests unitarios, integración, e2e y conectividad con Prisma.
+      # Turbo respeta el orden topológico (`dependsOn: ^build`).
+      - name: Verify
+        run: pnpm verify

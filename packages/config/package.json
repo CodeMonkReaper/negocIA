@@ -1,0 +1,21 @@
+{
+  "name": "@negocia/config",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Configuración compartida: validación de variables de entorno y helpers de resolución de paths.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@negocia/eslint-config": "workspace:*",
+    "@types/node": "^24.13.6",
+    "eslint": "9.39.5",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.1"
+  }
+}

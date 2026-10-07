@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "declaration": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"],
+  "//": "Los `.spec.ts` se excluyen del build: este paquete se publica como tipos, y emitir una spec sin `vitest` en el `include` de la app consumidora rompería el `tsc` de quien lo importe. Los tests se ejecutan con `vitest`, que los transforma aparte.",
+  "exclude": ["src/**/*.spec.ts", "dist"]
+}

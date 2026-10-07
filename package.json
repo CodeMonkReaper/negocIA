@@ -1,0 +1,35 @@
+{
+  "name": "negocia",
+  "version": "0.0.0",
+  "private": true,
+  "description": "negocIA — SaaS multi-tenant de IA para WhatsApp (monorepo foundation)",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:integration": "pnpm --filter @negocia/api run test:integration",
+    "test:e2e": "pnpm --filter @negocia/api run test:e2e",
+    "verify": "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test && pnpm run test:integration && pnpm run test:e2e && pnpm run db:check",
+    "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "db:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "db:logs": "docker compose -f infra/docker/docker-compose.yml logs -f",
+    "db:ps": "docker compose -f infra/docker/docker-compose.yml ps",
+    "db:check": "pnpm --filter @negocia/database run db:check",
+    "prisma:generate": "pnpm --filter @negocia/database run generate",
+    "prisma:validate": "pnpm --filter @negocia/database run validate",
+    "prisma:migrate": "pnpm --filter @negocia/database run migrate:dev",
+    "prisma:deploy": "pnpm --filter @negocia/database run migrate:deploy",
+    "prisma:push": "pnpm --filter @negocia/database run push",
+    "prisma:studio": "pnpm --filter @negocia/database run studio",
+    "webhook:test": "node scripts/simulate-inbound.mjs"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.3"
+  }
+}

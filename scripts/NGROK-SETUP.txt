@@ -1,0 +1,55 @@
+═══════════════════════════════════════════════════════════════
+  GUÍA RÁPIDA: Configurar ngrok para Embedded Signup
+═══════════════════════════════════════════════════════════════
+
+PASO 1: Iniciar ngrok
+───────────────────────────────────────────────────────────────
+Abre una NUEVA terminal y ejecuta:
+
+  ngrok http 4000
+
+Verás una salida similar a:
+  Session Status                online
+  Account                       tu_cuenta (PREMIUM)
+  Upstream                      http://localhost:4000
+  Web Interface                 http://127.0.0.1:4040
+  Forwarding                    https://abc123.ngrok-free.dev -> http://localhost:4000
+
+PASO 2: Copiar la URL pública
+───────────────────────────────────────────────────────────────
+Copia la URL de "Forwarding" que empieza con https://
+Ejemplo: https://abc123.ngrok-free.dev
+
+PASO 3: Actualizar tu .env
+───────────────────────────────────────────────────────────────
+Edita el archivo .env y actualiza esta línea:
+
+  META_EMBEDDED_SIGNUP_REDIRECT_URI=https://abc123.ngrok-free.dev/api/v1/whatsapp/accounts/embedded-signup/callback
+
+Reemplaza abc123 con tu URL única.
+
+PASO 4: Configurar en Meta Developer Console
+───────────────────────────────────────────────────────────────
+1. Ve a https://developers.facebook.com/apps/
+2. Selecciona tu aplicación de WhatsApp
+3. Configuración > WhatsApp > Configuración
+4. Busca "Embedded Signup" y haz clic en "Editar"
+5. Habilita "Embedded Signup OAuth flow"
+6. En "Redirect URIs", agrega:
+   https://abc123.ngrok-free.dev/api/v1/whatsapp/accounts/embedded-signup/callback
+7. Guarda los cambios
+
+PASO 5: Reiniciar la API
+───────────────────────────────────────────────────────────────
+Vuelve a la terminal donde corre la API y reinicia:
+  npm run dev
+
+═══════════════════════════════════════════════════════════════
+
+NOTA: Ngrok requiere una cuenta gratuita. Si no tienes una:
+  1. Visita https://ngrok.com
+  2. Regístrate gratis
+  3. Descarga e instala ngrok
+  4. Ejecuta: ngrok config add-authtoken TU_TOKEN_AQUI
+
+═══════════════════════════════════════════════════════════════
