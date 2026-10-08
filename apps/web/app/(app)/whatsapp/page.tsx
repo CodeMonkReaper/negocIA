@@ -11,6 +11,7 @@ import {
   accountStatusLabel,
   accountStatusTone,
 } from "@/lib/status";
+import { usePolling } from "@/lib/use-poll";
 
 export default function WhatsappPage() {
   const { membership } = useAuth();
@@ -46,6 +47,8 @@ export default function WhatsappPage() {
       cancelled = true;
     };
   }, [load]);
+
+  usePolling(() => void load(), 15_000, isOwner);
 
   return (
     <div className="flex flex-col gap-6">

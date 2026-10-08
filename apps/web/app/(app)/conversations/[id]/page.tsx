@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -21,6 +22,7 @@ import {
   conversationStatusTone,
   runStatusTone,
 } from "@/lib/status";
+import { usePolling } from "@/lib/use-poll";
 
 export default function ConversationDetailPage() {
   const params = useParams<{ id: string }>();
@@ -38,66 +40,59 @@ export default function ConversationDetailPage() {
   const [sendError, setSendError] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const refreshingRef = useRef(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
+  const refreshAll = useCallback(
+    async (): Promise<{ error: string | null }> => {
+      if (refreshingRef.current) {
+        return { error: null };
+      }
+      refreshingRef.current = true;
       try {
         const [messagesRes, runsRes, listRes] = await Promise.all([
           api.messages(conversationId, { limit: 100 }),
           api.runs(conversationId, { limit: 50 }),
           api.conversations({ limit: 100 }),
         ]);
-        if (cancelled) {
-          return;
-        }
         setMessages(messagesRes.items);
         setRuns(runsRes.items);
         setConversation(
           listRes.items.find((item) => item.id === conversationId) ?? null,
         );
+        return { error: null };
       } catch (err) {
-        if (cancelled) {
-          return;
-        }
-        setError(
-          err instanceof Error ? `${err.message} (${conversationId})` : String(err),
-        );
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        refreshingRef.current = false;
       }
+    },
+    [conversationId],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { error } = await refreshAll();
+      if (cancelled) {
+        return;
+      }
+      if (error) {
+        setError(`${error} (${conversationId})`);
+      }
+      setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [conversationId]);
+  }, [refreshAll, conversationId]);
+
+  usePolling(() => void refreshAll(), 10_000);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
-
-  async function reloadMessages(): Promise<void> {
-    try {
-      const res = await api.messages(conversationId, { limit: 100 });
-      setMessages(res.items);
-      setError(null);
-    } catch (err) {
-      setError(
-        err instanceof Error ? `${err.message} (${conversationId})` : String(err),
-      );
-    }
-  }
-
-  async function reloadRuns(): Promise<void> {
-    try {
-      const res = await api.runs(conversationId, { limit: 50 });
-      setRuns(res.items);
-    } catch (err) {
-      setSendError(err instanceof Error ? err.message : String(err));
-    }
-  }
 
   async function send(): Promise<void> {
     const text = draft.trim();
@@ -149,9 +144,15 @@ export default function ConversationDetailPage() {
           ← Inbox
         </Link>
         <div className="flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold tracking-tight text-white">
-            {conversation?.customerName ?? "Cliente"}
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight text-white">
+              {conversation?.customerName ?? "Cliente"}
+            </h1>
+            <span className="flex items-center gap-1.5 text-xs text-emerald-500">
+              <span className="inline-block size-1.5 animate-pulse rounded-full bg-emerald-500" />
+              en vivo
+            </span>
+          </div>
           {conversation ? (
             <Badge tone={conversationStatusTone(conversation.status)}>
               {conversationStatusLabel(conversation.status)}
@@ -169,7 +170,7 @@ export default function ConversationDetailPage() {
             title="Mensajes"
             action={
               <button
-                onClick={() => void reloadMessages()}
+                onClick={() => void refreshAll()}
                 className="text-sm text-neutral-500 hover:text-neutral-300"
               >
                 Recargar
@@ -250,7 +251,7 @@ export default function ConversationDetailPage() {
             title="Runs de LLM"
             action={
               <button
-                onClick={() => void reloadRuns()}
+                onClick={() => void refreshAll()}
                 className="text-sm text-neutral-500 hover:text-neutral-300"
               >
                 Recargar

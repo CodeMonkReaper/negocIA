@@ -17,6 +17,7 @@ import {
   conversationStatusLabel,
   conversationStatusTone,
 } from "@/lib/status";
+import { usePolling } from "@/lib/use-poll";
 
 export default function DashboardPage() {
   const { user, tenant, membership } = useAuth();
@@ -67,6 +68,8 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [load]);
+
+  usePolling(() => void load(), 15_000);
 
   return (
     <div className="flex flex-col gap-8">

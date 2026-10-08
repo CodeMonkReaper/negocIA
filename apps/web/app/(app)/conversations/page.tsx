@@ -10,6 +10,7 @@ import {
   conversationStatusLabel,
   conversationStatusTone,
 } from "@/lib/status";
+import { usePolling } from "@/lib/use-poll";
 
 const PAGE_SIZE = 20;
 
@@ -48,6 +49,19 @@ export default function ConversationsPage() {
     };
   }, [load]);
 
+  usePolling(async () => {
+    if (conversations.length > PAGE_SIZE) {
+      return;
+    }
+    try {
+      const res = await api.conversations({ limit: PAGE_SIZE, offset: 0 });
+      setConversations(res.items);
+      setTotal(res.total);
+    } catch {
+      // Silencioso: el error inicial se muestra arriba.
+    }
+  }, 15_000);
+
   async function loadMore(): Promise<void> {
     setLoadingMore(true);
     try {
@@ -68,9 +82,15 @@ export default function ConversationsPage() {
     <div className="flex flex-col gap-6">
       <header className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold tracking-tight text-white">
-            Conversaciones
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight text-white">
+              Conversaciones
+            </h1>
+            <span className="flex items-center gap-1.5 text-xs text-emerald-500">
+              <span className="inline-block size-1.5 animate-pulse rounded-full bg-emerald-500" />
+              en vivo
+            </span>
+          </div>
           <p className="text-sm text-neutral-500">
             {total > 0 ? `${total} en total` : "Inbox del canal de WhatsApp"}
           </p>
