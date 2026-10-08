@@ -249,6 +249,10 @@ class RunStub implements LlmRunRepository {
     this.skipped++;
     return null;
   }
+
+  async listByConversation() {
+    return unusedCall("listByConversation");
+  }
 }
 
 function setup(options?: {

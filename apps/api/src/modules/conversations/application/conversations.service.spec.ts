@@ -1,7 +1,18 @@
-import { describe, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   ConversationRepository,
 } from "../../../domain/ports/conversation-repository";
+import type {
+  LlmRunRepository,
+} from "../../../domain/ports/llm-run-repository";
+import type {
+  WhatsappAccountRepository,
+} from "../../../domain/ports/whatsapp-account-repository";
+import type { WhatsappProvider } from "../../../domain/ports/whatsapp-provider";
+import { NotFoundError } from "../../../domain/errors";
+import type { ConversationRecord } from "../../../domain/conversations/entities";
+import type { LlmRunRecord } from "../../../domain/llm/entities";
+import { ConversationsService } from "./conversations.service";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 class FakeConversationRepository implements Partial<ConversationRepository> {
@@ -88,5 +99,91 @@ describe.skip("ConversationsService lecturas", () => {
     // await expect(
     //   service.listMessages("t-1", "conv-inexistente", { limit: 20, offset: 0 }),
     // ).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("ConversationsService.listRuns", () => {
+  const conversation = {
+    id: "conv-1",
+    tenantId: "t-1",
+    accountId: "a-1",
+    customerWaId: "573100000001",
+    customerName: null,
+    status: "BOT_ACTIVE",
+    lastMessageAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  } as ConversationRecord;
+
+  const run = {
+    id: "run-1",
+    tenantId: "t-1",
+    conversationId: "conv-1",
+    inboundMessageId: "m-1",
+    outboundMessageId: null,
+    requestId: "req-1",
+    status: "SUCCEEDED",
+    driver: "openrouter",
+    requestedModel: "openai/gpt-4o-mini",
+    resolvedModel: null,
+    finishReason: "stop",
+    promptTokens: 100,
+    completionTokens: 50,
+    totalTokens: 150,
+    toolCalls: 0,
+    attempts: 1,
+    latencyMs: 120,
+    errorCode: null,
+    errorMessage: null,
+    completedAt: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  } as LlmRunRecord;
+
+  function buildService(
+    runs: Partial<LlmRunRepository>,
+    conversations: Partial<ConversationRepository> = {},
+  ): ConversationsService {
+    return new ConversationsService(
+      {
+        findById: async () => conversation,
+        ...conversations,
+      } as unknown as ConversationRepository,
+      {} as unknown as WhatsappAccountRepository,
+      {} as unknown as WhatsappProvider,
+      runs as unknown as LlmRunRepository,
+    );
+  }
+
+  it("lanza NotFoundError si la conversación no existe en el tenant", async () => {
+    const listByConversation = vi.fn().mockResolvedValue({ items: [], total: 0 });
+    const service = buildService(
+      { listByConversation },
+      { findById: async () => null },
+    );
+
+    await expect(
+      service.listRuns("t-1", "conv-ajena", { limit: 20, offset: 0 }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(listByConversation).not.toHaveBeenCalled();
+  });
+
+  it("delega en el repositorio con tenant, conversación y opciones", async () => {
+    const listByConversation = vi
+      .fn()
+      .mockResolvedValue({ items: [run], total: 1 });
+    const service = buildService({ listByConversation });
+
+    const page = await service.listRuns("t-1", "conv-1", {
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(page.total).toBe(1);
+    expect(page.items[0].requestId).toBe("req-1");
+    expect(listByConversation).toHaveBeenCalledWith("t-1", "conv-1", {
+      limit: 20,
+      offset: 0,
+    });
   });
 });

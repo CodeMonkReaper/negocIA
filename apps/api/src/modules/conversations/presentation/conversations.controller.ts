@@ -20,8 +20,10 @@ import type { Principal } from "../../../domain/tenant-context";
 import { ConversationsService } from "../application/conversations.service";
 import {
   toConversationResponseDto,
+  toLlmRunResponseDto,
   toMessageResponseDto,
   type ConversationResponseDto,
+  type LlmRunResponseDto,
   type MessageResponseDto,
 } from "./conversation.mapper";
 import { ListConversationsQueryDto } from "./dto/list-conversations-query.dto";
@@ -96,6 +98,35 @@ export class ConversationsController {
     );
     return {
       items: page.items.map(toMessageResponseDto),
+      total: page.total,
+    };
+  }
+
+  @Get(":id/runs")
+  @ApiOperation({
+    summary: "Runs de LLM de una conversación",
+    description:
+      "Página de runs en orden cronológico inverso (el más reciente primero). " +
+      "404 si la conversación no existe en el tenant.",
+  })
+  @ApiResponse({ status: 200, description: "Página de runs de LLM." })
+  @ApiResponse({ status: 404, description: "La conversación no existe en este tenant." })
+  async listRuns(
+    @Param() params: ConversationIdParamDto,
+    @Query() query: ListMessagesQueryDto,
+    @Req() request: Request,
+  ): Promise<ListResponse<LlmRunResponseDto>> {
+    const principal = request.principal as Principal;
+    const page = await this.conversations.listRuns(
+      principal.tenantId,
+      params.id,
+      {
+        limit: query.limit ?? 20,
+        offset: query.offset ?? 0,
+      },
+    );
+    return {
+      items: page.items.map(toLlmRunResponseDto),
       total: page.total,
     };
   }

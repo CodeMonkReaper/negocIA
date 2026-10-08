@@ -59,6 +59,37 @@ interface SeededConversation {
   messageIds: string[];
 }
 
+/** Siembra un run de LLM SUCCEEDED sobre un mensaje de la conversación. */
+async function seedRun(
+  tenantId: string,
+  conversationId: string,
+  messageId: string,
+  requestId: string,
+  createdAtOffsetMs = 0,
+): Promise<void> {
+  await prisma.db.llmRun.create({
+    data: {
+      tenantId,
+      conversationId,
+      inboundMessageId: messageId,
+      requestId,
+      driver: "openrouter",
+      requestedModel: "openai/gpt-4o-mini",
+      resolvedModel: "openai/gpt-4o-mini",
+      status: "SUCCEEDED",
+      finishReason: "stop",
+      promptTokens: 12,
+      completionTokens: 8,
+      totalTokens: 20,
+      toolCalls: 0,
+      attempts: 1,
+      latencyMs: 150,
+      completedAt: new Date(),
+      createdAt: new Date(Date.now() + createdAtOffsetMs),
+    },
+  });
+}
+
 /** Crea la cuenta y siembra una conversación con dos mensajes de prueba. */
 async function seedConversation(tenantId: string): Promise<SeededConversation> {
   const uid = randomUUID().slice(0, 8);
@@ -266,6 +297,73 @@ describe("GET /conversations/:id/messages", () => {
     const owner = await register("cafe@example.com", "Café");
     const res = await request(http)
       .get(api("/conversations/no-es-un-uuid/messages"))
+      .set(...bearer(owner.accessToken));
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("validation_error");
+  });
+});
+
+describe("GET /conversations/:id/runs", () => {
+  it("devuelve las runs de la conversación, la más reciente primero", async () => {
+    const owner = await register("cafe@example.com", "Café");
+    const seeded = await seedConversation(owner.tenant.id);
+    await seedRun(
+      owner.tenant.id,
+      seeded.conversationId,
+      seeded.messageIds[0],
+      "req.e2e.1",
+    );
+    await seedRun(
+      owner.tenant.id,
+      seeded.conversationId,
+      seeded.messageIds[0],
+      "req.e2e.2",
+      2_000,
+    );
+
+    const res = await request(http)
+      .get(api(`/conversations/${seeded.conversationId}/runs`))
+      .set(...bearer(owner.accessToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(2);
+    expect(res.body.items[0].requestId).toBe("req.e2e.2");
+    expect(res.body.items[0]).toMatchObject({
+      status: "SUCCEEDED",
+      driver: "openrouter",
+      requestedModel: "openai/gpt-4o-mini",
+      totalTokens: 20,
+      latencyMs: 150,
+    });
+    expect(res.body.items[0].completedAt).toBeTruthy();
+    expect(res.body.items[0].createdAt).toBeTypeOf("string");
+  });
+
+  it("devuelve 404 para una conversación de otro tenant (indistinguible de inexistente)", async () => {
+    const ownerA = await register("cafe@example.com", "Café A");
+    const seeded = await seedConversation(ownerA.tenant.id);
+    await seedRun(
+      ownerA.tenant.id,
+      seeded.conversationId,
+      seeded.messageIds[0],
+      "req.e2e.foraneo",
+    );
+
+    const ownerB = await register("cafe-b@example.com", "Café B");
+
+    const res = await request(http)
+      .get(api(`/conversations/${seeded.conversationId}/runs`))
+      .set(...bearer(ownerB.accessToken));
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("not_found");
+  });
+
+  it("valida el formato del :id (400 con un id que no es uuid)", async () => {
+    const owner = await register("cafe@example.com", "Café");
+    const res = await request(http)
+      .get(api("/conversations/no-es-un-uuid/runs"))
       .set(...bearer(owner.accessToken));
 
     expect(res.status).toBe(400);

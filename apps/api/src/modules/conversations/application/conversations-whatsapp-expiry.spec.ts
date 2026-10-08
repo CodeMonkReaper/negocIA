@@ -4,6 +4,7 @@ import type { ConversationRepository } from "../../../domain/ports/conversation-
 import type { WhatsappAccountRecord } from "../../../domain/whatsapp/entities";
 import type { WhatsappAccountRepository } from "../../../domain/ports";
 import type { WhatsappProvider } from "../../../domain/ports/whatsapp-provider";
+import type { LlmRunRepository } from "../../../domain/ports/llm-run-repository";
 import { ConversationsService } from "./conversations.service";
 
 const CONVERSATION = {
@@ -92,12 +93,14 @@ function provider(behavior: () => Promise<unknown>) {
 function service(wa: WhatsappProvider) {
   const conversations = new FakeConversations();
   const accounts = new FakeAccounts();
+  const runs = {} as unknown as LlmRunRepository;
   return {
     accounts,
     service: new ConversationsService(
       conversations as unknown as ConversationRepository,
       accounts,
       wa,
+      runs,
     ),
   };
 }

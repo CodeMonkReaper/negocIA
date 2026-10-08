@@ -5,7 +5,11 @@ import type {
   LlmRunRecord,
   StartLlmRunDraft,
 } from '../../../domain/llm/entities';
-import type { LlmRunRepository } from '../../../domain/ports/llm-run-repository';
+import type {
+  ListLlmRunsOptions,
+  LlmRunRepository,
+} from '../../../domain/ports/llm-run-repository';
+import type { ConversationPage } from '../../../domain/ports/conversation-repository';
 
 /**
  * Convierte un registro de Prisma LlmRun a la entidad de dominio LlmRunRecord.
@@ -131,5 +135,23 @@ export class PrismaLlmRunRepository implements LlmRunRepository {
       if (prismaError.code === 'P2025') return null;
       throw e;
     }
+  }
+
+  async listByConversation(
+    tenantId: string,
+    conversationId: string,
+    options: ListLlmRunsOptions,
+  ): Promise<ConversationPage<LlmRunRecord>> {
+    const where = { tenantId, conversationId };
+    const [rows, total] = await Promise.all([
+      this.db.llmRun.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: options.offset,
+        take: options.limit,
+      }),
+      this.db.llmRun.count({ where }),
+    ]);
+    return { items: rows.map(toLlmRunRecord), total };
   }
 }

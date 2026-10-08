@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import {
   CONVERSATION_REPOSITORY,
+  LLM_RUN_REPOSITORY,
   WHATSAPP_ACCOUNT_REPOSITORY,
   WHATSAPP_PROVIDER,
 } from "../../../common/di-tokens";
@@ -10,8 +11,13 @@ import type {
   ListConversationsOptions,
   ListMessagesOptions,
 } from "../../../domain/ports/conversation-repository";
+import type {
+  ListLlmRunsOptions,
+  LlmRunRepository,
+} from "../../../domain/ports/llm-run-repository";
 import { NotFoundError, WhatsAppTokenExpiredError } from "../../../domain/errors";
 import type { ConversationRecord, MessageRecord } from "../../../domain/conversations/entities";
+import type { LlmRunRecord } from "../../../domain/llm/entities";
 import { parseDeliveryStatusUpdates, parseInboundMessages } from "../../../domain/conversations/meta-message.mapper";
 import type { WhatsappAccountRepository } from "../../../domain/ports/whatsapp-account-repository";
 import type { WhatsappProvider } from "../../../domain/ports/whatsapp-provider";
@@ -47,6 +53,8 @@ export class ConversationsService {
     private readonly accounts: WhatsappAccountRepository,
     @Inject(WHATSAPP_PROVIDER)
     private readonly whatsapp: WhatsappProvider,
+    @Inject(LLM_RUN_REPOSITORY)
+    private readonly runs: LlmRunRepository,
   ) {}
 
   async ingestInbound(event: InboundEventPayload): Promise<{
@@ -109,6 +117,19 @@ export class ConversationsService {
   ): Promise<ConversationPage<MessageRecord>> {
     await this.getConversation(tenantId, conversationId);
     return this.conversations.listMessages(tenantId, conversationId, options);
+  }
+
+  /**
+   * Runs de LLM de una conversación (F3-3b). Verifica que la conversación
+   * exista en el tenant (404 indistinguible de "no existe") antes de listar.
+   */
+  async listRuns(
+    tenantId: string,
+    conversationId: string,
+    options: ListLlmRunsOptions,
+  ): Promise<ConversationPage<LlmRunRecord>> {
+    await this.getConversation(tenantId, conversationId);
+    return this.runs.listByConversation(tenantId, conversationId, options);
   }
 
   /**

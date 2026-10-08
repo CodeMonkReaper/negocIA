@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseModule } from "../src/infrastructure/database/database.module";
 import { PrismaService } from "../src/infrastructure/database/prisma.service";
 import { PrismaConversationRepository } from "../src/infrastructure/database/repositories/prisma-conversation.repository";
+import { PrismaLlmRunRepository } from "../src/infrastructure/database/repositories/prisma-llm-run.repository";
 import { closeTestDatabase, resetDatabase } from "./helpers/database";
 import { testUrl } from "./helpers/env";
 
@@ -62,6 +63,7 @@ async function buildContext() {
   await module.init();
   return {
     conversations: module.get(PrismaConversationRepository),
+    runs: module.get(PrismaLlmRunRepository),
     prisma: module.get(PrismaService),
   };
 }
@@ -303,5 +305,108 @@ describe("PrismaConversationRepository (integration)", () => {
     expect(
       await ctx.conversations.findById(randomUUID(), created.conversation.id),
     ).toBeNull();
+  });
+});
+
+describe("PrismaLlmRunRepository.listByConversation (integration)", () => {
+  let ctx: Ctx;
+  let tenantA: string;
+  let accountA: string;
+
+  beforeAll(async () => {
+    ctx = await buildContext();
+  });
+
+  afterAll(async () => {
+    await ctx.prisma.onModuleDestroy();
+    await closeTestDatabase();
+  });
+
+  beforeEach(async () => {
+    await resetDatabase();
+    ({ tenantId: tenantA, accountId: accountA } = await seedTenantWithAccount(
+      ctx,
+      "cafe-runs",
+      "573001234561",
+    ));
+  });
+
+  async function seedConversationWithRuns(
+    slug: string,
+    count: number,
+  ): Promise<string> {
+    const inbound = await ctx.conversations.recordInboundMessage(
+      { tenantId: tenantA, accountId: accountA },
+      {
+        ...INBOUND(`wamid.runs-${slug}`, `5731${slug}0001`),
+        customerName: `Cliente ${slug}`,
+      },
+    );
+    if (inbound === "duplicated") {
+      throw new Error("setup fallido");
+    }
+    const { conversation, message } = inbound;
+    for (let i = 0; i < count; i += 1) {
+      await ctx.prisma.db.llmRun.create({
+        data: {
+          tenantId: tenantA,
+          conversationId: conversation.id,
+          inboundMessageId: message.id,
+          requestId: `req.runs.${slug}.${i}`,
+          driver: "openrouter",
+          requestedModel: "openai/gpt-4o-mini",
+          status: i % 2 === 0 ? "SUCCEEDED" : "FAILED",
+          promptTokens: 10 + i,
+          completionTokens: 5,
+          totalTokens: 15 + i,
+          latencyMs: 100 + i,
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    return conversation.id;
+  }
+
+  it("lista las runs de la conversación en orden cronológico inverso", async () => {
+    const conversationId = await seedConversationWithRuns("a", 3);
+
+    const page = await ctx.runs.listByConversation(tenantA, conversationId, {
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(page.total).toBe(3);
+    // requestId más antiguo primero en creación → el 2 es el más reciente.
+    expect(page.items[0].requestId).toBe("req.runs.a.2");
+    expect(page.items.map((r) => r.status)).toEqual(["SUCCEEDED", "FAILED", "SUCCEEDED"]);
+  });
+
+  it("aísla por tenant: un conversationId ajeno devuelve página vacía", async () => {
+    const conversationId = await seedConversationWithRuns("b", 1);
+
+    const page = await ctx.runs.listByConversation(randomUUID(), conversationId, {
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(page.total).toBe(0);
+    expect(page.items).toHaveLength(0);
+  });
+
+  it("pagina con limit/offset", async () => {
+    const conversationId = await seedConversationWithRuns("c", 3);
+
+    const first = await ctx.runs.listByConversation(tenantA, conversationId, {
+      limit: 1,
+      offset: 0,
+    });
+    const second = await ctx.runs.listByConversation(tenantA, conversationId, {
+      limit: 1,
+      offset: 1,
+    });
+
+    expect(first.items).toHaveLength(1);
+    expect(first.items[0].requestId).toBe("req.runs.c.2");
+    expect(second.items[0].requestId).toBe("req.runs.c.1");
   });
 });
