@@ -12,6 +12,8 @@ import { TenantContextInterceptor } from "./common/tenant-context/tenant-context
 import { TenantContextModule } from "./common/tenant-context/tenant-context.module";
 import { DatabaseModule } from "./infrastructure/database/database.module";
 import { LlmModule } from "./infrastructure/llm.module";
+import { RealtimeModule } from "./infrastructure/realtime/realtime.module";
+import { RealtimeSseModule } from "./infrastructure/realtime/realtime-sse.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { ConversationsModule } from "./modules/conversations/conversations.module";
 import { HealthModule } from "./modules/health/health.module";
@@ -56,6 +58,9 @@ import { WhatsappModule } from "./modules/whatsapp/whatsapp.module";
     // Proveedor de IA (F3-3). Sin consumidor HTTP: el consumo es solo worker
     // (F3-3b parcial: WhatsappEventsWorker → llm-jobs → ConversationEngineService).
     LlmModule,
+    // Eventos en tiempo real: publicador (worker+API) y fan-out SSE (solo API).
+    RealtimeModule,
+    RealtimeSseModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

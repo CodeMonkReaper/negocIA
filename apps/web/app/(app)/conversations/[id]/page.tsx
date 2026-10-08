@@ -13,6 +13,7 @@ import type {
   ConversationResponseDto,
   LlmRunResponseDto,
   MessageResponseDto,
+  RealtimeEventDto,
 } from "@negocia/contracts";
 import { Badge, Card, Spinner, TextArea } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -23,6 +24,7 @@ import {
   runStatusTone,
 } from "@/lib/status";
 import { usePolling } from "@/lib/use-poll";
+import { useRealtime } from "@/lib/use-realtime";
 
 export default function ConversationDetailPage() {
   const params = useParams<{ id: string }>();
@@ -88,7 +90,21 @@ export default function ConversationDetailPage() {
     };
   }, [refreshAll, conversationId]);
 
-  usePolling(() => void refreshAll(), 10_000);
+  const onRealtimeEvent = useCallback(
+    (event: RealtimeEventDto) => {
+      if (event.conversationId && event.conversationId !== conversationId) {
+        return;
+      }
+      void refreshAll();
+    },
+    [conversationId, refreshAll],
+  );
+
+  useRealtime(onRealtimeEvent);
+
+  // El push cubre mensajes nuevos y cambios de run; el polling queda como
+  // red de seguridad por si el stream se cae.
+  usePolling(() => void refreshAll(), 60_000);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });

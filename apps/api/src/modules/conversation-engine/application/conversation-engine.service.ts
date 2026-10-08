@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import {
   CONVERSATION_REPOSITORY,
+  EVENT_PUBLISHER,
   LLM_PROVIDER,
   WHATSAPP_ACCOUNT_REPOSITORY,
   WHATSAPP_PROVIDER,
@@ -21,6 +22,7 @@ import { TenantContextService } from "../../../common/tenant-context/tenant-cont
 import { ToolCatalog } from "../../../domain/llm/tool-catalog";
 import { buildPrompt } from "./prompt";
 import { ToolExecutor } from "./tool-executor";
+import type { EventPublisher } from "../../../domain/ports/event-publisher";
 
 const MAX_TOOL_ITERATIONS = 5;
 const SYSTEM_PROMPT = "Eres un asistente útil. Responde de forma concisa y clara.";
@@ -36,6 +38,7 @@ export class ConversationEngineService {
     private readonly accounts: WhatsappAccountRepository,
     @Inject(WHATSAPP_PROVIDER) private readonly wa: WhatsappProvider,
     @Inject(LLM_RUN_REPOSITORY) private readonly runs: LlmRunRepository,
+    @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
     private readonly ctx: TenantContextService,
     private readonly executor: ToolExecutor,
   ) {}
@@ -57,6 +60,12 @@ export class ConversationEngineService {
       });
       if (dup === "duplicated") return;
       started = true;
+      // El run ya existe (RUNNING): el panel lo ve aparecer de inmediato.
+      await this.events.publish({
+        event: "conversation.changed",
+        tenantId,
+        conversationId,
+      });
       await this.runOnce(input, start);
     } catch (e) {
       // Sin este catch, una excepción (timeout/429 de OpenRouter, Meta caído)
@@ -78,6 +87,16 @@ export class ConversationEngineService {
         });
       }
       throw e;
+    } finally {
+      // Estado terminal (SUCCEEDED/FAILED/SKIPPED) o mensaje saliente nuevo:
+      // con UN publish basta para que el panel refresque runs y mensajes.
+      if (started) {
+        await this.events.publish({
+          event: "conversation.changed",
+          tenantId,
+          conversationId,
+        });
+      }
     }
   }
 

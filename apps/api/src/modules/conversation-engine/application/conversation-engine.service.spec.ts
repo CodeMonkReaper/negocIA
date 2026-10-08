@@ -18,6 +18,7 @@ import type {
   LlmProvider,
 } from "../../../domain/ports/llm-provider";
 import type { LlmRunRepository } from "../../../domain/ports/llm-run-repository";
+import type { EventPublisher, PublishEventInput } from "../../../domain/ports/event-publisher";
 import type { WhatsappAccountRepository } from "../../../domain/ports/whatsapp-account-repository";
 import type { WhatsappProvider } from "../../../domain/ports/whatsapp-provider";
 import type { WhatsappAccountRecord } from "../../../domain/whatsapp/entities";
@@ -271,16 +272,26 @@ function setup(options?: {
       : "wamid.HBg1",
   );
   const runs = new RunStub(options?.duplicatedRun ?? false);
+  const events = new EventsStub();
   const service = new ConversationEngineService(
     conv,
     llm,
     accounts,
     wa,
     runs,
+    events,
     {} as TenantContextService,
     {} as ToolExecutor,
   );
-  return { service, conv, llm, accounts, wa, runs };
+  return { service, conv, llm, accounts, wa, runs, events };
+}
+
+class EventsStub implements EventPublisher {
+  readonly published: PublishEventInput[] = [];
+
+  async publish(input: PublishEventInput): Promise<void> {
+    this.published.push(input);
+  }
 }
 
 describe("ConversationEngineService.respond", () => {
@@ -350,5 +361,28 @@ describe("ConversationEngineService.respond", () => {
     expect(conv.outbound).toHaveLength(0);
     expect(runs.skipped).toBe(1);
     expect(runs.succeeded).toHaveLength(0);
+  });
+
+  it("no publica eventos realtime si el run ya estaba registrado", async () => {
+    const { service, events } = setup({ duplicatedRun: true });
+
+    await service.respond(JOB);
+
+    expect(events.published).toHaveLength(0);
+  });
+
+  it("publica conversation.changed al empezar y al terminar el run", async () => {
+    const { service, events } = setup();
+
+    await service.respond(JOB);
+
+    expect(events.published).toHaveLength(2);
+    for (const published of events.published) {
+      expect(published).toEqual({
+        event: "conversation.changed",
+        tenantId: "t-1",
+        conversationId: "conv-1",
+      });
+    }
   });
 });

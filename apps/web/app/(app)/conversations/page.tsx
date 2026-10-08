@@ -11,6 +11,7 @@ import {
   conversationStatusTone,
 } from "@/lib/status";
 import { usePolling } from "@/lib/use-poll";
+import { useRealtime } from "@/lib/use-realtime";
 
 const PAGE_SIZE = 20;
 
@@ -49,7 +50,7 @@ export default function ConversationsPage() {
     };
   }, [load]);
 
-  usePolling(async () => {
+  const reloadFirstPage = useCallback(async () => {
     if (conversations.length > PAGE_SIZE) {
       return;
     }
@@ -60,7 +61,17 @@ export default function ConversationsPage() {
     } catch {
       // Silencioso: el error inicial se muestra arriba.
     }
-  }, 15_000);
+  }, [conversations.length]);
+
+  const onRealtimeEvent = useCallback(() => {
+    void reloadFirstPage();
+  }, [reloadFirstPage]);
+
+  useRealtime(onRealtimeEvent);
+
+  // El push actualiza la primera página al instante; el polling es el fallback
+  // si el stream se cae.
+  usePolling(() => void reloadFirstPage(), 60_000);
 
   async function loadMore(): Promise<void> {
     setLoadingMore(true);

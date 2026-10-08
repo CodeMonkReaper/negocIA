@@ -9,6 +9,7 @@ import type {
   WhatsappAccountRepository,
 } from "../../../domain/ports/whatsapp-account-repository";
 import type { WhatsappProvider } from "../../../domain/ports/whatsapp-provider";
+import type { EventPublisher } from "../../../domain/ports/event-publisher";
 import { NotFoundError } from "../../../domain/errors";
 import type { ConversationRecord } from "../../../domain/conversations/entities";
 import type { LlmRunRecord } from "../../../domain/llm/entities";
@@ -144,6 +145,9 @@ describe("ConversationsService.listRuns", () => {
     runs: Partial<LlmRunRepository>,
     conversations: Partial<ConversationRepository> = {},
   ): ConversationsService {
+    const events: EventPublisher = {
+      publish: vi.fn().mockResolvedValue(undefined),
+    };
     return new ConversationsService(
       {
         findById: async () => conversation,
@@ -152,6 +156,7 @@ describe("ConversationsService.listRuns", () => {
       {} as unknown as WhatsappAccountRepository,
       {} as unknown as WhatsappProvider,
       runs as unknown as LlmRunRepository,
+      events,
     );
   }
 

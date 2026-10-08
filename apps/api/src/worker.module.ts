@@ -13,6 +13,7 @@ import type { WhatsappEventRepository } from "./domain/ports/whatsapp-event-repo
 import { TenantContextModule } from "./common/tenant-context/tenant-context.module";
 import { DatabaseModule } from "./infrastructure/database/database.module";
 import { LlmModule } from "./infrastructure/llm.module";
+import { RealtimeModule } from "./infrastructure/realtime/realtime.module";
 import { LlmJobQueue } from "./infrastructure/queues/llm-job-queue";
 import { LlmJobsWorker } from "./infrastructure/workers/llm-jobs.worker";
 import { WhatsappEventsWorker } from "./infrastructure/workers/whatsapp-events.worker";
@@ -38,6 +39,9 @@ import { TokenRefreshService } from "./modules/whatsapp/application/token-refres
     ConversationEngineModule,
     ConversationsModule,
     WhatsappProviderModule,
+    // El worker publica eventos realtime (mensajes entrantes, runs) que el API
+    // re-emite por SSE; el publicador no toca HTTP (ver RealtimeModule).
+    RealtimeModule,
   ],
   providers: [
     {

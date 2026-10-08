@@ -5,6 +5,7 @@ import type { WhatsappAccountRecord } from "../../../domain/whatsapp/entities";
 import type { WhatsappAccountRepository } from "../../../domain/ports";
 import type { WhatsappProvider } from "../../../domain/ports/whatsapp-provider";
 import type { LlmRunRepository } from "../../../domain/ports/llm-run-repository";
+import type { EventPublisher } from "../../../domain/ports/event-publisher";
 import { ConversationsService } from "./conversations.service";
 
 const CONVERSATION = {
@@ -94,6 +95,9 @@ function service(wa: WhatsappProvider) {
   const conversations = new FakeConversations();
   const accounts = new FakeAccounts();
   const runs = {} as unknown as LlmRunRepository;
+  const events: EventPublisher = {
+    publish: vi.fn().mockResolvedValue(undefined),
+  };
   return {
     accounts,
     service: new ConversationsService(
@@ -101,6 +105,7 @@ function service(wa: WhatsappProvider) {
       accounts,
       wa,
       runs,
+      events,
     ),
   };
 }

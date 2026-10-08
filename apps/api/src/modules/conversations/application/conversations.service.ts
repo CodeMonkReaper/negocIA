@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import {
   CONVERSATION_REPOSITORY,
+  EVENT_PUBLISHER,
   LLM_RUN_REPOSITORY,
   WHATSAPP_ACCOUNT_REPOSITORY,
   WHATSAPP_PROVIDER,
@@ -21,6 +22,7 @@ import type { LlmRunRecord } from "../../../domain/llm/entities";
 import { parseDeliveryStatusUpdates, parseInboundMessages } from "../../../domain/conversations/meta-message.mapper";
 import type { WhatsappAccountRepository } from "../../../domain/ports/whatsapp-account-repository";
 import type { WhatsappProvider } from "../../../domain/ports/whatsapp-provider";
+import type { EventPublisher } from "../../../domain/ports/event-publisher";
 
 export interface InboundEventPayload {
   tenantId: string;
@@ -55,6 +57,8 @@ export class ConversationsService {
     private readonly whatsapp: WhatsappProvider,
     @Inject(LLM_RUN_REPOSITORY)
     private readonly runs: LlmRunRepository,
+    @Inject(EVENT_PUBLISHER)
+    private readonly events: EventPublisher,
   ) {}
 
   async ingestInbound(event: InboundEventPayload): Promise<{
@@ -87,6 +91,22 @@ export class ConversationsService {
       if (await this.conversations.recordDeliveryStatus(event.tenantId, update)) {
         statusesApplied += 1;
       }
+    }
+
+    // Aviso en tiempo real: un mensaje nuevo (o un `statuses[]` aplicado) deja
+    // o actualiza el inbox; el panel refresca sin esperar al polling.
+    for (const item of inserted) {
+      await this.events.publish({
+        event: "conversation.changed",
+        tenantId: event.tenantId,
+        conversationId: item.conversationId,
+      });
+    }
+    if (statusesApplied > 0) {
+      await this.events.publish({
+        event: "conversation.changed",
+        tenantId: event.tenantId,
+      });
     }
 
     return { messagesInserted, statusesApplied, inserted };
@@ -173,9 +193,17 @@ export class ConversationsService {
       throw error;
     }
 
-    return this.conversations.recordOutboundMessage(
+    const message = await this.conversations.recordOutboundMessage(
       { tenantId: input.tenantId, conversationId: conversation.id },
       { providerMessageId: sent.providerMessageId, content: input.text },
     );
+
+    await this.events.publish({
+      event: "conversation.changed",
+      tenantId: input.tenantId,
+      conversationId: conversation.id,
+    });
+
+    return message;
   }
 }

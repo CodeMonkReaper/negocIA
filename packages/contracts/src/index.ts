@@ -22,5 +22,6 @@ export * from "./auth";
 export * from "./invitations";
 export * from "./whatsapp";
 export * from "./llm";
+export * from "./realtime";
 
 export const API_PREFIX = "/api";

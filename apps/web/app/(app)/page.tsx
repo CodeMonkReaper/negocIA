@@ -18,6 +18,7 @@ import {
   conversationStatusTone,
 } from "@/lib/status";
 import { usePolling } from "@/lib/use-poll";
+import { useRealtime } from "@/lib/use-realtime";
 
 export default function DashboardPage() {
   const { user, tenant, membership } = useAuth();
@@ -69,7 +70,14 @@ export default function DashboardPage() {
     };
   }, [load]);
 
-  usePolling(() => void load(), 15_000);
+  const onRealtimeEvent = useCallback(() => {
+    void load();
+  }, [load]);
+
+  useRealtime(onRealtimeEvent);
+
+  // Push para mensajes nuevos; polling como red de seguridad si se cae el SSE.
+  usePolling(() => void load(), 60_000);
 
   return (
     <div className="flex flex-col gap-8">

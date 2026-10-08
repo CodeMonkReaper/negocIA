@@ -16,6 +16,7 @@ import type {
   UserProfileDto,
 } from "@negocia/contracts";
 import { api, clearTokens, loadTokens, saveTokens } from "./api";
+import { startRealtime, stopRealtime } from "./realtime";
 
 type AuthStatus = "loading" | "authenticated" | "anonymous";
 
@@ -118,6 +119,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMemberships([]);
     }
   }, []);
+
+  // La única conexión SSE del tab vive mientras haya sesión autenticada; al
+  // cerrar/expirar se aborta y el fallback de polling hace el resto.
+  useEffect(() => {
+    if (status === "authenticated") {
+      startRealtime();
+      return () => {
+        stopRealtime();
+      };
+    }
+    stopRealtime();
+  }, [status]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
