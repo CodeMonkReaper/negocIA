@@ -60,9 +60,19 @@ pnpm db:ps          # verificar health de los contenedores
 pnpm build
 
 # 6. Arrancar API y web en paralelo (Turborepo)
+# Abrir una terminal y ejecutar:
 pnpm dev
 
-# 7. Verificar
+# 7. Arrancar el Worker (Eventos en segundo plano)
+# Abrir una SEGUNDA terminal y ejecutar:
+pnpm --filter @negocia/api start:worker
+
+# 8. Exponer túnel local para WhatsApp (Solo si integras Meta real)
+# Abrir una TERCERA terminal y ejecutar:
+ngrok http 4000
+# (Luego actualiza META_EMBEDDED_SIGNUP_REDIRECT_URI en tu .env y reinicia el paso 6)
+
+# 9. Verificar
 #    API  -> http://localhost:4000/api/health
 #    Web  -> http://localhost:3000
 ```

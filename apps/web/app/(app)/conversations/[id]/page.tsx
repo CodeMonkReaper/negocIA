@@ -10,12 +10,13 @@ import {
   type KeyboardEvent,
 } from "react";
 import type {
+  ConversationAction,
   ConversationResponseDto,
   LlmRunResponseDto,
   MessageResponseDto,
   RealtimeEventDto,
 } from "@negocia/contracts";
-import { Badge, Card, Spinner, TextArea } from "@/components/ui";
+import { Badge, Button, Card, Spinner, TextArea } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import {
@@ -40,6 +41,9 @@ export default function ConversationDetailPage() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+
+  const [transitioning, setTransitioning] = useState(false);
+  const [transitionError, setTransitionError] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const refreshingRef = useRef(false);
@@ -135,6 +139,24 @@ export default function ConversationDetailPage() {
     }
   }
 
+  async function handleTransition(action: ConversationAction): Promise<void> {
+    if (transitioning) {
+      return;
+    }
+    setTransitioning(true);
+    setTransitionError(null);
+    try {
+      const res = await api.transitionConversation(conversationId, action);
+      setConversation((prev) =>
+        prev ? { ...prev, status: res.status, updatedAt: res.updatedAt } : null,
+      );
+    } catch (err) {
+      setTransitionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTransitioning(false);
+    }
+  }
+
   if (loading) {
     return <Spinner label="Cargando conversación…" />;
   }
@@ -159,7 +181,7 @@ export default function ConversationDetailPage() {
         >
           ← Inbox
         </Link>
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-white">
               {conversation?.customerName ?? "Cliente"}
@@ -169,12 +191,59 @@ export default function ConversationDetailPage() {
               en vivo
             </span>
           </div>
-          {conversation ? (
-            <Badge tone={conversationStatusTone(conversation.status)}>
-              {conversationStatusLabel(conversation.status)}
-            </Badge>
-          ) : null}
+          <div className="flex items-center gap-3">
+            {conversation ? (
+              <>
+                <Badge tone={conversationStatusTone(conversation.status)}>
+                  {conversationStatusLabel(conversation.status)}
+                </Badge>
+                {conversation.status === "BOT_ACTIVE" ? (
+                  <Button
+                    variant="secondary"
+                    className="text-xs py-1 px-3"
+                    disabled={transitioning}
+                    onClick={() => void handleTransition("TAKE")}
+                  >
+                    {transitioning ? "Procesando…" : "Tomar conversación"}
+                  </Button>
+                ) : null}
+                {conversation.status === "HUMAN_REQUESTED" ? (
+                  <>
+                    <Button
+                      variant="primary"
+                      className="text-xs py-1 px-3"
+                      disabled={transitioning}
+                      onClick={() => void handleTransition("TAKE")}
+                    >
+                      {transitioning ? "Procesando…" : "Atender ahora"}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="text-xs py-1 px-3"
+                      disabled={transitioning}
+                      onClick={() => void handleTransition("RETURN_TO_BOT")}
+                    >
+                      Devolver al bot
+                    </Button>
+                  </>
+                ) : null}
+                {conversation.status === "HUMAN_ACTIVE" ? (
+                  <Button
+                    variant="secondary"
+                    className="text-xs py-1 px-3"
+                    disabled={transitioning}
+                    onClick={() => void handleTransition("RETURN_TO_BOT")}
+                  >
+                    {transitioning ? "Procesando…" : "Devolver al bot"}
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </div>
+        {transitionError ? (
+          <p className="text-xs text-red-400 mt-1">{transitionError}</p>
+        ) : null}
         <p className="font-mono text-xs text-neutral-500">
           {conversation?.customerWaId}
         </p>

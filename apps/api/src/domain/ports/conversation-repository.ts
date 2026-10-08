@@ -76,7 +76,7 @@ export interface ConversationRepository {
 
   getConversation(tenantId: string, conversationId: string): Promise<ConversationRecord>;
 
-  updateStatus(
+  transitionStatus(
     tenantId: string,
     conversationId: string,
     from: string,

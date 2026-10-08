@@ -2,7 +2,9 @@ import {
   API_PREFIX,
   type AuthSessionDto,
   type AuthTokensDto,
+  type ConversationAction,
   type ConversationResponseDto,
+  type ConversationStatusResponseDto,
   type EmbeddedSignupUrlResponseDto,
   type ListResponse,
   type LlmRunResponseDto,
@@ -266,6 +268,16 @@ export const api = {
   ): Promise<ListResponse<LlmRunResponseDto>> {
     return request(
       `/conversations/${encodeURIComponent(conversationId)}/runs${qs(params)}`,
+    );
+  },
+
+  transitionConversation(
+    conversationId: string,
+    action: ConversationAction,
+  ): Promise<ConversationStatusResponseDto> {
+    return request(
+      `/conversations/${encodeURIComponent(conversationId)}/transition`,
+      { method: "POST", body: { action } },
     );
   },
 };

@@ -22,6 +22,7 @@ import type { EventPublisher, PublishEventInput } from "../../../domain/ports/ev
 import type { WhatsappAccountRepository } from "../../../domain/ports/whatsapp-account-repository";
 import type { WhatsappProvider } from "../../../domain/ports/whatsapp-provider";
 import type { WhatsappAccountRecord } from "../../../domain/whatsapp/entities";
+import type { ProductRepository } from "../../../domain/ports/product-repository";
 
 function unusedCall(name: string): never {
   throw new Error(`llamada inesperada al stub: ${name}`);
@@ -141,8 +142,8 @@ class ConversationStub implements ConversationRepository {
     return CONVERSATION;
   }
 
-  async updateStatus() {
-    return unusedCall("updateStatus");
+  async transitionStatus() {
+    return unusedCall("transitionStatus");
   }
 
   async listRecentMessages(): Promise<MessageRecord[]> {
@@ -273,6 +274,9 @@ function setup(options?: {
   );
   const runs = new RunStub(options?.duplicatedRun ?? false);
   const events = new EventsStub();
+  const products = {
+    search: async () => [],
+  } as unknown as ProductRepository;
   const service = new ConversationEngineService(
     conv,
     llm,
@@ -280,10 +284,11 @@ function setup(options?: {
     wa,
     runs,
     events,
+    products,
     {} as TenantContextService,
     {} as ToolExecutor,
   );
-  return { service, conv, llm, accounts, wa, runs, events };
+  return { service, conv, llm, accounts, wa, runs, events, products };
 }
 
 class EventsStub implements EventPublisher {

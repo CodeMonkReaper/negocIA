@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Query,
@@ -13,13 +15,14 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
-import type { ListResponse } from "@negocia/contracts";
+import type { ConversationStatusResponseDto, ListResponse } from "@negocia/contracts";
 import type { Request } from "express";
 import { Roles } from "../../../common/guards/roles.decorator";
 import type { Principal } from "../../../domain/tenant-context";
 import { ConversationsService } from "../application/conversations.service";
 import {
   toConversationResponseDto,
+  toConversationStatusResponseDto,
   toLlmRunResponseDto,
   toMessageResponseDto,
   type ConversationResponseDto,
@@ -32,6 +35,7 @@ import {
   ListMessagesQueryDto,
 } from "./dto/conversation-param.dto";
 import { SendMessageDto } from "./dto/send-message.dto";
+import { TransitionConversationDto } from "./dto/transition-conversation.dto";
 
 /**
  * Lectura de conversaciones y mensajes del canal (F2-4, docs/api/conversations.md).
@@ -40,9 +44,6 @@ import { SendMessageDto } from "./dto/send-message.dto";
  * de Atención es el consumidor natural del inbox. El id de la URL siempre se
  * filtra por el tenant del `Principal`: un id ajeno cae en 404 "no existe", nunca
  * en 403.
- *
- * Las transiciones de la máquina de estados no tienen endpoints en este hito
- * (llegan en F6-3 con el traspaso a humano): aquí solo se persiste y se lee.
  */
 @ApiTags("conversations")
 @ApiBearerAuth()
@@ -155,5 +156,30 @@ export class ConversationsController {
       text: body.text,
     });
     return toMessageResponseDto(message);
+  }
+
+  @Post(":id/transition")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Cambiar estado de la conversación",
+    description:
+      "TAKE → BOT_ACTIVE a HUMAN_REQUESTED/HUMAN_ACTIVE según estado; " +
+      "RETURN_TO_BOT → devuelve a BOT_ACTIVE. 404 si la acción no aplica o " +
+      "la conversación no existe en este tenant.",
+  })
+  @ApiResponse({ status: 200, description: "Estado actualizado." })
+  @ApiResponse({ status: 404, description: "Acción no aplicable o conversación no encontrada." })
+  async transition(
+    @Param() params: ConversationIdParamDto,
+    @Body() body: TransitionConversationDto,
+    @Req() request: Request,
+  ): Promise<ConversationStatusResponseDto> {
+    const principal = request.principal as Principal;
+    const conversation = await this.conversations.transitionConversation(
+      principal.tenantId,
+      params.id,
+      body.action,
+    );
+    return toConversationStatusResponseDto(conversation);
   }
 }

@@ -6,11 +6,13 @@ import {
   WHATSAPP_ACCOUNT_REPOSITORY,
   WHATSAPP_PROVIDER,
   LLM_RUN_REPOSITORY,
+  PRODUCT_REPOSITORY,
 } from "../../../common/di-tokens";
 import type { ConversationRepository } from "../../../domain/ports/conversation-repository";
 import type { LlmProvider } from "../../../domain/ports/llm-provider";
 import type { WhatsappAccountRepository } from "../../../domain/ports/whatsapp-account-repository";
 import type { WhatsappProvider } from "../../../domain/ports/whatsapp-provider";
+import type { ProductRepository } from "../../../domain/ports/product-repository";
 import type { LlmJobInput } from "../../../domain/ports/llm-job-queuer";
 import type {
   LlmCompletionRequest,
@@ -25,7 +27,11 @@ import { ToolExecutor } from "./tool-executor";
 import type { EventPublisher } from "../../../domain/ports/event-publisher";
 
 const MAX_TOOL_ITERATIONS = 5;
-const SYSTEM_PROMPT = "Eres un asistente útil. Responde de forma concisa y clara.";
+const SYSTEM_PROMPT =
+  "Eres un asistente virtual de atención al cliente para un negocio en WhatsApp. " +
+  "Responde de forma concisa, cordial y útil. " +
+  "Si el cliente pregunta por productos, servicios, precios, disponibilidad o detalles de lo que ofrece el negocio, " +
+  "debes consultar la herramienta `search_catalog` para obtener la información real antes de responder.";
 
 @Injectable()
 export class ConversationEngineService {
@@ -39,9 +45,46 @@ export class ConversationEngineService {
     @Inject(WHATSAPP_PROVIDER) private readonly wa: WhatsappProvider,
     @Inject(LLM_RUN_REPOSITORY) private readonly runs: LlmRunRepository,
     @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
+    @Inject(PRODUCT_REPOSITORY) private readonly products: ProductRepository,
     private readonly ctx: TenantContextService,
     private readonly executor: ToolExecutor,
-  ) {}
+  ) {
+    this.catalog.register(
+      {
+        name: "search_catalog",
+        description:
+          "Busca productos y servicios disponibles en el catálogo del negocio (precios, descripción, duración, categoría).",
+        parameters: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description:
+                "Término de búsqueda, nombre del producto o servicio, o categoría (ej. 'corte', 'precio', 'manicure', 'café').",
+            },
+          },
+        },
+      },
+      async (args, ctx) => {
+        const { query } = (args ?? {}) as { query?: string };
+        const found = await this.products.search(ctx.tenantId, query ?? "", 6);
+        return {
+          toolCallId: "",
+          name: "search_catalog",
+          ok: true,
+          output: found.map((p) => ({
+            name: p.name,
+            description: p.description,
+            price: p.price,
+            currency: p.currency,
+            type: p.type,
+            category: p.category,
+            durationMinutes: p.durationMinutes,
+          })),
+        };
+      },
+    );
+  }
 
   async respond(input: LlmJobInput): Promise<void> {
     const tenantId = input.tenantId;

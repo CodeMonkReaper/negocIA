@@ -44,6 +44,8 @@ export interface ConversationResponseDto {
   updatedAt: string;
 }
 
+export type ConversationStatus = ConversationResponseDto["status"];
+
 export interface MessageResponseDto {
   id: string;
   conversationId: string;
@@ -53,5 +55,19 @@ export interface MessageResponseDto {
   content: string | null;
   deliveryStatus: string | null;
   createdAt: string;
+  updatedAt: string;
+}
+export const CONVERSATION_ACTIONS = [
+  "TAKE",
+  "RETURN_TO_BOT",
+] as const;
+export type ConversationAction = (typeof CONVERSATION_ACTIONS)[number];
+export interface TransitionConversationDto {
+  action: ConversationAction;
+}
+
+export interface ConversationStatusResponseDto {
+  id: string;
+  status: ConversationStatus;
   updatedAt: string;
 }

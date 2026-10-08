@@ -15,6 +15,7 @@ import { LlmModule } from "./infrastructure/llm.module";
 import { RealtimeModule } from "./infrastructure/realtime/realtime.module";
 import { RealtimeSseModule } from "./infrastructure/realtime/realtime-sse.module";
 import { AuthModule } from "./modules/auth/auth.module";
+import { CatalogModule } from "./modules/catalog/catalog.module";
 import { ConversationsModule } from "./modules/conversations/conversations.module";
 import { HealthModule } from "./modules/health/health.module";
 import { InvitationsModule } from "./modules/invitations/invitations.module";
@@ -55,6 +56,7 @@ import { WhatsappModule } from "./modules/whatsapp/whatsapp.module";
     HealthModule,
     WhatsappModule,
     ConversationsModule,
+    CatalogModule,
     // Proveedor de IA (F3-3). Sin consumidor HTTP: el consumo es solo worker
     // (F3-3b parcial: WhatsappEventsWorker → llm-jobs → ConversationEngineService).
     LlmModule,

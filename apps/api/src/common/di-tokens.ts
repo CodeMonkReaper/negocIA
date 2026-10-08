@@ -36,6 +36,7 @@ export const WHATSAPP_WEBHOOK_LOGGER = "WHATSAPP_WEBHOOK_LOGGER";
 export const LLM_JOB_QUEUER = "LLM_JOB_QUEUER";
 export const LLM_RUN_REPOSITORY = "LLM_RUN_REPOSITORY";
 export const EVENT_PUBLISHER = "EVENT_PUBLISHER";
+export const PRODUCT_REPOSITORY = "PRODUCT_REPOSITORY";
 
 export const PORT_TOKENS = {
   accessTokenIssuer: ACCESS_TOKEN_ISSUER,
@@ -48,6 +49,7 @@ export const PORT_TOKENS = {
   llmJobQueuer: LLM_JOB_QUEUER,
   llmRunRepository: LLM_RUN_REPOSITORY,
   eventPublisher: EVENT_PUBLISHER,
+  productRepository: PRODUCT_REPOSITORY,
   membershipRepository: MEMBERSHIP_REPOSITORY,
   idGenerator: ID_GENERATOR,
   opaqueTokenGenerator: OPAQUE_TOKEN_GENERATOR,

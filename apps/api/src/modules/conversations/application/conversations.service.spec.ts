@@ -31,7 +31,7 @@ class FakeConversationRepository implements Partial<ConversationRepository> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getConversation(): Promise<any> { return { id: 'c1', tenantId: 't1', accountId: 'a1', customerPhone: '+1', status: 'BOT_ACTIVE', createdAt: new Date(), updatedAt: new Date(), lastMessageAt: null } as any; }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async updateStatus(): Promise<any> { return null; }
+  async transitionStatus(): Promise<any> { return null; }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async listRecentMessages(): Promise<any[]> { return []; }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -190,5 +190,99 @@ describe("ConversationsService.listRuns", () => {
       limit: 20,
       offset: 0,
     });
+  });
+});
+
+describe("ConversationsService.transitionConversation", () => {
+  const conversation = (status: string) =>
+    ({
+      id: "conv-1",
+      tenantId: "t-1",
+      accountId: "a-1",
+      customerWaId: "573100000001",
+      customerName: null,
+      status,
+      lastMessageAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }) as ConversationRecord;
+
+  function buildService(
+    currentStatus: string,
+    transitionResult: ConversationRecord | null | undefined = undefined,
+  ): { service: ConversationsService; events: EventPublisher; transitionStatus: ReturnType<typeof vi.fn> } {
+    const transitionStatus = vi.fn().mockResolvedValue(
+      transitionResult !== undefined ? transitionResult : conversation("HUMAN_REQUESTED"),
+    );
+    const events: EventPublisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const service = new ConversationsService(
+      {
+        findById: async () => conversation(currentStatus),
+        transitionStatus,
+      } as unknown as ConversationRepository,
+      {} as unknown as WhatsappAccountRepository,
+      {} as unknown as WhatsappProvider,
+      {} as unknown as LlmRunRepository,
+      events,
+    );
+    return { service, events, transitionStatus };
+  }
+
+  it("TAKE desde BOT_ACTIVE pasa a HUMAN_REQUESTED y publica conversation.changed", async () => {
+    const { service, events, transitionStatus } = buildService("BOT_ACTIVE");
+
+    const result = await service.transitionConversation("t-1", "conv-1", "TAKE");
+
+    expect(result.status).toBe("HUMAN_REQUESTED");
+    expect(transitionStatus).toHaveBeenCalledWith("t-1", "conv-1", "BOT_ACTIVE", "HUMAN_REQUESTED");
+    expect(events.publish).toHaveBeenCalledWith({
+      event: "conversation.changed",
+      tenantId: "t-1",
+      conversationId: "conv-1",
+    });
+  });
+
+  it("TAKE desde HUMAN_REQUESTED pasa a HUMAN_ACTIVE", async () => {
+    const { service, transitionStatus } = buildService("HUMAN_REQUESTED", conversation("HUMAN_ACTIVE"));
+
+    const result = await service.transitionConversation("t-1", "conv-1", "TAKE");
+
+    expect(result.status).toBe("HUMAN_ACTIVE");
+    expect(transitionStatus).toHaveBeenCalledWith("t-1", "conv-1", "HUMAN_REQUESTED", "HUMAN_ACTIVE");
+  });
+
+  it("RETURN_TO_BOT desde HUMAN_ACTIVE devuelve a BOT_ACTIVE", async () => {
+    const { service, transitionStatus } = buildService("HUMAN_ACTIVE", conversation("BOT_ACTIVE"));
+
+    const result = await service.transitionConversation("t-1", "conv-1", "RETURN_TO_BOT");
+
+    expect(result.status).toBe("BOT_ACTIVE");
+    expect(transitionStatus).toHaveBeenCalledWith("t-1", "conv-1", "HUMAN_ACTIVE", "BOT_ACTIVE");
+  });
+
+  it("RETURN_TO_BOT desde HUMAN_REQUESTED devuelve a BOT_ACTIVE", async () => {
+    const { service, transitionStatus } = buildService("HUMAN_REQUESTED", conversation("BOT_ACTIVE"));
+
+    await service.transitionConversation("t-1", "conv-1", "RETURN_TO_BOT");
+
+    expect(transitionStatus).toHaveBeenCalledWith("t-1", "conv-1", "HUMAN_REQUESTED", "BOT_ACTIVE");
+  });
+
+  it("lanza NotFoundError si la acción no aplica al estado actual", async () => {
+    const { service, events, transitionStatus } = buildService("BOT_ACTIVE");
+
+    await expect(
+      service.transitionConversation("t-1", "conv-1", "RETURN_TO_BOT"),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(transitionStatus).not.toHaveBeenCalled();
+    expect(events.publish).not.toHaveBeenCalled();
+  });
+
+  it("lanza NotFoundError si el repositorio no actualiza (condición de carrera)", async () => {
+    const { service } = buildService("BOT_ACTIVE", null);
+
+    await expect(
+      service.transitionConversation("t-1", "conv-1", "TAKE"),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

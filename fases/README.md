@@ -35,6 +35,7 @@ Cada vez que se complete una tarea/milestone, se crea un documento en esta carpe
 | [M10-llm-provider-openrouter.md](M10-llm-provider-openrouter.md) | Fase 3 — proveedor de IA `LlmProvider` + driver OpenRouter (F3-3a) | 03/10/2026 | Completo |
 | [M11-panel-web.md](M11-panel-web.md) | Fase 3 — web consumiendo la API: panel (auth, embedded signup, inbox, runs) + `GET /conversations/:id/runs` | 07/10/2026 | Completo |
 | [M12-realtime-sse.md](M12-realtime-sse.md) | Fase 3 — live updates: polling 60s de respaldo + tiempo real SSE (Redis pub/sub) | 07/10/2026 | Completo |
+| [M13-traspaso-a-humano-handoff.md](M13-traspaso-a-humano-handoff.md) | Fase 2/3 — traspaso a humano (F6-3): transiciones de estado API + UI en panel web + eventos realtime | 08/10/2026 | Completo |
 
 > **Numeración de hitos:** `M8` es el hito de conversaciones/mensajes (F2-4). El hito diferido de
 > **Embedded Signup + envío real** que M7/M8 nombraban "M8" queda renumerado como **M9**
@@ -46,7 +47,7 @@ Cada vez que se complete una tarea/milestone, se crea un documento en esta carpe
 entrante en verde** (`META_DRIVER=mock` bloqueado en prod; webhook firmado+idempotente,
 BullMQ/Redis — ADR-010) + **F2-4 conversaciones/mensajes en verde** (el worker persiste el
 inbound con idempotencia `provider_message_id`; `GET /conversations` y
-`GET /conversations/:id/messages`; máquina de estados pura sin endpoints de transición) +
+`GET /conversations/:id/messages`) +
 **M9 Embedded Signup + envío real + cifrado de access_token en verde** (rutas OAuth Embedded Signup,
 `POST /v1/conversations/:id/messages`, `CryptoService` AES-256-GCM, `ENCRYPTION_KEY`) +
 **F3-3a proveedor de IA en verde** (puerto `LlmProvider` con drivers `mock`/`openrouter`,
@@ -54,8 +55,8 @@ inbound con idempotencia `provider_message_id`; `GET /conversations` y
 (panel: auth, embedded signup, inbox, detalle con respuesta manual y runs; `GET /conversations/:id/runs`)
 + **M12 live updates en verde** (eventos `conversation.changed` por Redis pub/sub worker↔API,
 SSE `GET /api/v1/events/stream` autenticado y filtrado por tenant, cliente fetch+ReadableStream con
-reconexión; polling 60s de respaldo).
-Próximos hitos: **F6-3** — handoff a humano (endpoints de transición de la máquina de estados),
-**F3-3b** — cierre del motor (tools de negocio en `ToolCatalog`, gasto por tenant, tests de
-engine/prompt/executor) y **F7-D3** — rotación del `access_token` de WhatsApp. Detalle y orden por
-dependencias: `fases/M12-realtime-sse.md` §8.
+reconexión; polling 60s de respaldo)
++ **M13 handoff a humano en verde (F6-3)** (endpoint `POST /v1/conversations/:id/transition` con
+`TAKE` y `RETURN_TO_BOT`, concurrencia segura, botones de acción en panel web, eventos realtime).
+Próximos hitos: **F3-3b** — cierre del motor (tools de negocio en `ToolCatalog`, gasto por tenant,
+catálogo de productos/servicios) y **F7-D3** — rotación del `access_token` de WhatsApp.

@@ -1,4 +1,4 @@
-﻿import { Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { ToolHandlerContext, ToolCatalog } from '../../../domain/llm/tool-catalog';
 import type { ToolResult } from '../../../domain/llm/tool-results';
 import type { LlmToolCall } from '../../../domain/ports/llm-provider';
@@ -15,7 +15,7 @@ export class ToolExecutor {
       }
       try {
         const out = await reg.handler(c.arguments, ctx);
-        results.push(out);
+        results.push({ ...out, toolCallId: c.id });
       } catch (error: unknown) {
         const e = error as { message?: string } | null;
         results.push({ toolCallId: c.id, name: c.name, ok: false, output: e?.message ?? 'error' });

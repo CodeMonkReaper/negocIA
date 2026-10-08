@@ -152,6 +152,49 @@ export class ConversationsService {
     return this.runs.listByConversation(tenantId, conversationId, options);
   }
 
+  async transitionConversation(
+    tenantId: string,
+    conversationId: string,
+    action: "TAKE" | "RETURN_TO_BOT",
+  ): Promise<ConversationRecord> {
+    const current = await this.getConversation(tenantId, conversationId);
+    let next: ConversationRecord["status"] | null = null;
+    if (action === "TAKE") {
+      if (current.status === "BOT_ACTIVE") {
+        next = "HUMAN_REQUESTED";
+      }
+      if (current.status === "HUMAN_REQUESTED") {
+        next = "HUMAN_ACTIVE";
+      }
+    }
+    if (action === "RETURN_TO_BOT") {
+      if (current.status === "HUMAN_ACTIVE") {
+        next = "BOT_ACTIVE";
+      }
+      if (current.status === "HUMAN_REQUESTED") {
+        next = "BOT_ACTIVE";
+      }
+    }
+    if (!next || current.status === next) {
+      throw new NotFoundError("not_found", "Acción no aplicable al estado actual");
+    }
+    const updated = await this.conversations.transitionStatus(
+      tenantId,
+      conversationId,
+      current.status,
+      next,
+    );
+    if (!updated) {
+      throw new NotFoundError("not_found", "Conversación no encontrada");
+    }
+    await this.events.publish({
+      event: "conversation.changed",
+      tenantId,
+      conversationId,
+    });
+    return updated;
+  }
+
   /**
    * Envía un mensaje de texto del agente al cliente (M8) y lo persiste como
    * `OUTBOUND`. El estado de la conversación no cambia (el traspaso a humano es

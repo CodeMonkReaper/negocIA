@@ -306,6 +306,73 @@ describe("PrismaConversationRepository (integration)", () => {
       await ctx.conversations.findById(randomUUID(), created.conversation.id),
     ).toBeNull();
   });
+
+  it("transitionStatus aplica el cambio si el estado from coincide", async () => {
+    const created = await ctx.conversations.recordInboundMessage(
+      { tenantId: tenantA, accountId: accountA },
+      INBOUND("wamid.t1"),
+    );
+    if (created === "duplicated") {
+      throw new Error("setup fallido");
+    }
+    const updated = await ctx.conversations.transitionStatus(
+      tenantA,
+      created.conversation.id,
+      "BOT_ACTIVE",
+      "HUMAN_REQUESTED",
+    );
+    expect(updated).not.toBeNull();
+    expect(updated?.status).toBe("HUMAN_REQUESTED");
+    expect(
+      (await ctx.prisma.db.conversation.findUniqueOrThrow({
+        where: { id: created.conversation.id },
+      })).status,
+    ).toBe("HUMAN_REQUESTED");
+  });
+
+  it("transitionStatus devuelve null si el estado from no coincide (concurrencia)", async () => {
+    const created = await ctx.conversations.recordInboundMessage(
+      { tenantId: tenantA, accountId: accountA },
+      INBOUND("wamid.t2"),
+    );
+    if (created === "duplicated") {
+      throw new Error("setup fallido");
+    }
+    const result = await ctx.conversations.transitionStatus(
+      tenantA,
+      created.conversation.id,
+      "HUMAN_ACTIVE",
+      "CLOSED",
+    );
+    expect(result).toBeNull();
+    expect(
+      (await ctx.prisma.db.conversation.findUniqueOrThrow({
+        where: { id: created.conversation.id },
+      })).status,
+    ).toBe("BOT_ACTIVE");
+  });
+
+  it("transitionStatus aísla por tenant: otro tenant no puede transicionar", async () => {
+    const created = await ctx.conversations.recordInboundMessage(
+      { tenantId: tenantA, accountId: accountA },
+      INBOUND("wamid.t3"),
+    );
+    if (created === "duplicated") {
+      throw new Error("setup fallido");
+    }
+    const result = await ctx.conversations.transitionStatus(
+      randomUUID(),
+      created.conversation.id,
+      "BOT_ACTIVE",
+      "HUMAN_REQUESTED",
+    );
+    expect(result).toBeNull();
+    expect(
+      (await ctx.prisma.db.conversation.findUniqueOrThrow({
+        where: { id: created.conversation.id },
+      })).status,
+    ).toBe("BOT_ACTIVE");
+  });
 });
 
 describe("PrismaLlmRunRepository.listByConversation (integration)", () => {

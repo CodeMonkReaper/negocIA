@@ -15,7 +15,6 @@ packages/database/src/generated/
 # Environment
 .env
 .env.*
-!.env.example
 
 # Logs
 *.log

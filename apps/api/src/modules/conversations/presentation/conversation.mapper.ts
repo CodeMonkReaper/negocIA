@@ -1,3 +1,4 @@
+import type { ConversationStatusResponseDto } from "@negocia/contracts";
 import type {
   ConversationRecord,
   MessageRecord,
@@ -8,6 +9,7 @@ import type { LlmRunRecord } from "../../../domain/llm/entities";
  * Proyección explícita campo a campo: la fila no viaja por HTTP tal cual y
  * enumerar evita que un cambio futuro del `select` se cuele en la respuesta.
  */
+
 export interface ConversationResponseDto {
   id: string;
   customerWaId: string;
@@ -25,6 +27,28 @@ export interface MessageResponseDto {
   content: string | null;
   deliveryStatus: string | null;
   createdAt: string;
+}
+
+export interface LlmRunResponseDto {
+  id: string;
+  conversationId: string;
+  requestId: string;
+  status: string;
+  driver: string;
+  requestedModel: string;
+  resolvedModel: string | null;
+  finishReason: string | null;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  toolCalls: number;
+  attempts: number;
+  latencyMs: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export function toConversationResponseDto(
@@ -52,28 +76,6 @@ export function toMessageResponseDto(message: MessageRecord): MessageResponseDto
   };
 }
 
-export interface LlmRunResponseDto {
-  id: string;
-  conversationId: string;
-  requestId: string;
-  status: string;
-  driver: string;
-  requestedModel: string;
-  resolvedModel: string | null;
-  finishReason: string | null;
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-  toolCalls: number;
-  attempts: number;
-  latencyMs: number | null;
-  errorCode: string | null;
-  errorMessage: string | null;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export function toLlmRunResponseDto(run: LlmRunRecord): LlmRunResponseDto {
   return {
     id: run.id,
@@ -95,5 +97,15 @@ export function toLlmRunResponseDto(run: LlmRunRecord): LlmRunResponseDto {
     completedAt: run.completedAt?.toISOString() ?? null,
     createdAt: run.createdAt.toISOString(),
     updatedAt: run.updatedAt.toISOString(),
+  };
+}
+
+export function toConversationStatusResponseDto(
+  conversation: ConversationRecord,
+): ConversationStatusResponseDto {
+  return {
+    id: conversation.id,
+    status: conversation.status,
+    updatedAt: conversation.updatedAt.toISOString(),
   };
 }

@@ -370,3 +370,121 @@ describe("GET /conversations/:id/runs", () => {
     expect(res.body.code).toBe("validation_error");
   });
 });
+
+describe("POST /conversations/:id/transition", () => {
+  it("exige sesión (401 sin token)", async () => {
+    const res = await request(http)
+      .post(api(`/conversations/${randomUUID()}/transition`))
+      .send({ action: "TAKE" });
+    expect(res.status).toBe(401);
+  });
+
+  it("TAKE desde BOT_ACTIVE pasa a HUMAN_REQUESTED", async () => {
+    const owner = await register("cafe@example.com", "Café");
+    const seeded = await seedConversation(owner.tenant.id);
+
+    const res = await request(http)
+      .post(api(`/conversations/${seeded.conversationId}/transition`))
+      .set(...bearer(owner.accessToken))
+      .send({ action: "TAKE" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: seeded.conversationId,
+      status: "HUMAN_REQUESTED",
+    });
+    expect(res.body.updatedAt).toBeTruthy();
+  });
+
+  it("TAKE desde HUMAN_REQUESTED pasa a HUMAN_ACTIVE", async () => {
+    const owner = await register("cafe@example.com", "Café");
+    const seeded = await seedConversation(owner.tenant.id);
+
+    await request(http)
+      .post(api(`/conversations/${seeded.conversationId}/transition`))
+      .set(...bearer(owner.accessToken))
+      .send({ action: "TAKE" });
+
+    const res = await request(http)
+      .post(api(`/conversations/${seeded.conversationId}/transition`))
+      .set(...bearer(owner.accessToken))
+      .send({ action: "TAKE" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("HUMAN_ACTIVE");
+  });
+
+  it("RETURN_TO_BOT desde HUMAN_ACTIVE devuelve a BOT_ACTIVE", async () => {
+    const owner = await register("cafe@example.com", "Café");
+    const seeded = await seedConversation(owner.tenant.id);
+
+    await request(http)
+      .post(api(`/conversations/${seeded.conversationId}/transition`))
+      .set(...bearer(owner.accessToken))
+      .send({ action: "TAKE" });
+    await request(http)
+      .post(api(`/conversations/${seeded.conversationId}/transition`))
+      .set(...bearer(owner.accessToken))
+      .send({ action: "TAKE" });
+
+    const res = await request(http)
+      .post(api(`/conversations/${seeded.conversationId}/transition`))
+      .set(...bearer(owner.accessToken))
+      .send({ action: "RETURN_TO_BOT" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("BOT_ACTIVE");
+  });
+
+  it("devuelve 404 si la acción no aplica al estado actual", async () => {
+    const owner = await register("cafe@example.com", "Café");
+    const seeded = await seedConversation(owner.tenant.id);
+
+    const res = await request(http)
+      .post(api(`/conversations/${seeded.conversationId}/transition`))
+      .set(...bearer(owner.accessToken))
+      .send({ action: "RETURN_TO_BOT" });
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("not_found");
+  });
+
+  it("devuelve 404 para una conversación de otro tenant", async () => {
+    const ownerA = await register("cafe@example.com", "Café A");
+    const seeded = await seedConversation(ownerA.tenant.id);
+
+    const ownerB = await register("cafe-b@example.com", "Café B");
+
+    const res = await request(http)
+      .post(api(`/conversations/${seeded.conversationId}/transition`))
+      .set(...bearer(ownerB.accessToken))
+      .send({ action: "TAKE" });
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("not_found");
+  });
+
+  it("valida el body (400 con action inválida)", async () => {
+    const owner = await register("cafe@example.com", "Café");
+    const seeded = await seedConversation(owner.tenant.id);
+
+    const res = await request(http)
+      .post(api(`/conversations/${seeded.conversationId}/transition`))
+      .set(...bearer(owner.accessToken))
+      .send({ action: "INVALID" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("validation_error");
+  });
+
+  it("valida el formato del :id (400 con un id que no es uuid)", async () => {
+    const owner = await register("cafe@example.com", "Café");
+    const res = await request(http)
+      .post(api("/conversations/no-es-un-uuid/transition"))
+      .set(...bearer(owner.accessToken))
+      .send({ action: "TAKE" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("validation_error");
+  });
+});

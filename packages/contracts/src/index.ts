@@ -23,5 +23,6 @@ export * from "./invitations";
 export * from "./whatsapp";
 export * from "./llm";
 export * from "./realtime";
+export * from "./catalog";
 
-export const API_PREFIX = "/api";
+export const API_PREFIX = "/api/v1";

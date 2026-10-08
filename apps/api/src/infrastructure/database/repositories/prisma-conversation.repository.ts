@@ -238,7 +238,7 @@ export class PrismaConversationRepository implements ConversationRepository {
     return { items: rows.map(toMessageRecord), total };
 }
 
-  async updateStatus(tenantId: string, conversationId: string, from: string, to: string): Promise<ConversationRecord | null> {
+  async transitionStatus(tenantId: string, conversationId: string, from: string, to: string): Promise<ConversationRecord | null> {
     try {
       const row = await this.db.conversation.update({
         where: { id: conversationId, tenantId, status: from },
