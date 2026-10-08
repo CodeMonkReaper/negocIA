@@ -33,6 +33,8 @@ Cada vez que se complete una tarea/milestone, se crea un documento en esta carpe
 | [M8-fase-2-conversaciones-mensajes.md](M8-fase-2-conversaciones-mensajes.md) | Fase 2 — conversaciones y mensajes (persistencia idempotente + inbox de lectura) | 03/10/2026 | Completo |
 | [M9-embedded-signup-envio-real.md](M9-embedded-signup-envio-real.md) | Fase 2 — Embedded Signup + envío real de WhatsApp + cifrado de access_token | 03/10/2026 | Completo (implementado; tests/documentación sincronizada) |
 | [M10-llm-provider-openrouter.md](M10-llm-provider-openrouter.md) | Fase 3 — proveedor de IA `LlmProvider` + driver OpenRouter (F3-3a) | 03/10/2026 | Completo |
+| [M11-panel-web.md](M11-panel-web.md) | Fase 3 — web consumiendo la API: panel (auth, embedded signup, inbox, runs) + `GET /conversations/:id/runs` | 07/10/2026 | Completo |
+| [M12-realtime-sse.md](M12-realtime-sse.md) | Fase 3 — live updates: polling 60s de respaldo + tiempo real SSE (Redis pub/sub) | 07/10/2026 | Completo |
 
 > **Numeración de hitos:** `M8` es el hito de conversaciones/mensajes (F2-4). El hito diferido de
 > **Embedded Signup + envío real** que M7/M8 nombraban "M8" queda renumerado como **M9**
@@ -48,8 +50,12 @@ inbound con idempotencia `provider_message_id`; `GET /conversations` y
 **M9 Embedded Signup + envío real + cifrado de access_token en verde** (rutas OAuth Embedded Signup,
 `POST /v1/conversations/:id/messages`, `CryptoService` AES-256-GCM, `ENCRYPTION_KEY`) +
 **F3-3a proveedor de IA en verde** (puerto `LlmProvider` con drivers `mock`/`openrouter`,
-`LLM_DRIVER` con `mock` bloqueado en prod — ADR-011; **sin consumidor todavía**).
-Próximos hitos: **F3-3b** — motor de conversación (cola `llm-jobs`, tools, handoff y `llm_runs`,
-que ya tiene historial persistido y el proveedor cableado). También en cola: **F3-1** (web
-consumiendo la API) y los quick wins de seguridad/testing (F6-S1, F5-T1, F5-T3). Detalle y
-orden por dependencias: `fases/M10-llm-provider-openrouter.md` §8 y `PROJECT_CONTEXT.md` §24.
+`LLM_DRIVER` con `mock` bloqueado en prod — ADR-011) + **M11 web consumiendo la API en verde**
+(panel: auth, embedded signup, inbox, detalle con respuesta manual y runs; `GET /conversations/:id/runs`)
++ **M12 live updates en verde** (eventos `conversation.changed` por Redis pub/sub worker↔API,
+SSE `GET /api/v1/events/stream` autenticado y filtrado por tenant, cliente fetch+ReadableStream con
+reconexión; polling 60s de respaldo).
+Próximos hitos: **F6-3** — handoff a humano (endpoints de transición de la máquina de estados),
+**F3-3b** — cierre del motor (tools de negocio en `ToolCatalog`, gasto por tenant, tests de
+engine/prompt/executor) y **F7-D3** — rotación del `access_token` de WhatsApp. Detalle y orden por
+dependencias: `fases/M12-realtime-sse.md` §8.

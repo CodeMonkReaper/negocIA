@@ -1,7 +1,7 @@
-# Capacidades actuales — negocIA (Fase 1 + F2-1/F2-2 + F2-3 + F2-4 + F3-3a)
+# Capacidades actuales — negocIA (Fase 1 + F2-1/F2-2 + F2-3 + F2-4 + F3-3a + M9/M10/M11/M12)
 
-> Estado: **Fase 1 (identidad multi-tenant) cerrada** + F2-1/F2-2 (email real + recuperación de contraseña) + **F2-3 (canal WhatsApp, ADR-010)** + **F2-4 (conversaciones y mensajes)** + **M9 (Embedded Signup + envío real + cifrado, ADR-012)** + **F3-3a (proveedor de IA, ADR-011)** + **F3-3b parcial (motor mínimo solo worker, sin tests)** en código; tests/CI verdes salvo brecha M9/engine declarada.
-> Verificación: 257 unit API + 44 config + 11 contracts + 7 database / 52 integración / 106 e2e / `db:check` OK (fuentes `fases/M10-llm-provider-openrouter.md` y `fases/M8-fase-2-conversaciones-mensajes.md`).
+> Estado: **Fase 1 (identidad multi-tenant) cerrada** + F2-1/F2-2 (email real + recuperación de contraseña) + **F2-3 (canal WhatsApp, ADR-010)** + **F2-4 (conversaciones y mensajes)** + **M9 (Embedded Signup + envío real + cifrado, ADR-012)** + **F3-3a (proveedor de IA, ADR-011)** + **M11 (web consumiendo la API, F3-1)** + **M12 (tiempo real SSE, live updates)** + **F3-3b parcial (motor mínimo solo worker, sin tests)** en código; tests/CI verdes.
+> Verificación (08/10/2026): `pnpm verify` exit 0 — 282 unit API + 48 config + 11 contracts + 12 database / 58 integración / 109 e2e / `db:check` OK (fuentes `fases/M12-realtime-sse.md` y `fases/M11-panel-web.md`).
 
 ## Resumen
 
@@ -11,8 +11,10 @@ BullMQ `whatsapp-events`/`llm-jobs` + workers que **persisten inbound y responde
 **conversaciones y mensajes** (inbox de lectura + envío manual y automático OUTBOUND), **Embedded Signup
 + cifrado `access_token`** (M9/ADR-012) y el **proveedor de IA + motor mínimo** (puerto `LlmProvider`
 OpenRouter + `ConversationEngineService` solo worker, `ToolCatalog` vacío, sin tests engine). La
-web aún es solo un panel de estado y **no consume la API**. Pendiente de negocio: tools/handoff/gasto/tests
-del motor, catálogos y facturación.
+web es un **panel completo que consume la API**: auth, conexión de WhatsApp, inbox, detalle con
+respuesta manual y runs del LLM, con **live updates por SSE** (Redis pub/sub worker↔API) y polling
+de 60s como red de seguridad. Pendiente de negocio: handoff a humano (F6-3), tools/gasto/tests del
+motor, rotación del access_token de WhatsApp, catálogos y facturación.
 
 ## Autenticación (`/api/v1/auth`)
 
@@ -111,6 +113,25 @@ Seguridad: JWT HS256 con claims mínimos, refresh con rotación y detección de 
   skip si `status!=BOT_ACTIVE`, envío OUTBOUND vía proveedor). Falta: tools de negocio, handoff a
   humano (F6-3), gasto por tenant y tests (engine/prompt/executor/workers).
 
+## Panel web (M11, F3-1) y live updates (M12)
+
+- **App Next.js (App Router)**: `/login`, `/register`, `/` (dashboard), `/conversations` (inbox),
+  `/conversations/:id` (detalle + responder + runs del LLM), `/whatsapp` (cuentas + embedded
+  signup). Guard de rutas privadas (`require-auth.tsx`) + `AuthProvider` que hidrata la sesión.
+- **Cliente API (`lib/api.ts`)**: login/register, refresh con rotación **single-flight**, me,
+  cuentas, embedded-signup, conversaciones, mensajes (enviar texto con Enter), runs.
+- **Autorización**: el rol se relee del `membership` y la cuenta de WhatsApp se muestra solo a
+  `OWNER`; la web es UX, la seguridad real vive en los `@Roles` del backend.
+- **Endpoint nuevo**: `GET /v1/conversations/:id/runs` (paginado, AGENT/ADMIN/OWNER) para el
+  panel de actividad del LLM.
+- **Tiempo real (SSE + Redis pub/sub, M12)**: eventos `conversation.changed` publicados por API y
+  worker en el canal `negocia:realtime` y re-emitidos por `GET /api/v1/events/stream` (guards
+  globales + filtrado por tenant + heartbeat 25s). Cliente con fetch + ReadableStream (el
+  `EventSource` nativo no manda el Bearer) y reconexión con backoff 1s→30s; una sola conexión por
+  pestaña, atada a la sesión.
+- **Polling de respaldo**: 60s en inbox/detalle/dashboard (el push cubre mensajes nuevos y cambios
+  de run); WhatsApp mantiene 15s. Sin Redis, el panel degrada a polling.
+
 ## Consumirla
 
 ```bash
@@ -120,11 +141,13 @@ pnpm --filter @negocia/api start:worker   # consume whatsapp-events (requiere bu
 
 - API: `http://localhost:4000/api`
 - Swagger UI: `http://localhost:4000/api/docs`
-- Web: `http://localhost:3000` (panel de estado; no consume la API)
+- Web: `http://localhost:3000` (panel: requieres registrarte/loguearte)
+- SSE: `GET http://localhost:4000/api/v1/events/stream` (header `Authorization: Bearer`)
 - Cambios: `pnpm verify` (lint, typecheck, build, unit, integración, e2e, `db:check`).
 
 ## Fuera de alcance de esta fase
 
-**Motor completo** (tools de negocio + handoff + gasto + tests del engine), catálogos, clientes, pedidos, facturación, dashboard en la web y RLS. Ver
-`docs/pendiente-fase-2.md` (la web es ahora el único pendiente de "cierre de Fase 1"). Embedded Signup,
-envío real y cifrado de tokens completados en M9 (ADR-012); motor mínimo F3-3b parcial operativo solo en worker.
+**Handoff a humano (F6-3)** (endpoints de transición de la máquina de estados), **cierre del
+motor F3-3b** (tools de negocio + gasto por tenant + tests del engine), **rotación del
+`access_token` de WhatsApp (F7-D3)**, catálogos, clientes, pedidos, facturación y RLS. Ver
+`docs/pendiente-fase-2.md`.

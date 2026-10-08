@@ -19,14 +19,18 @@
 - Flujo de conversación end-to-end entre WhatsApp → worker → LLM: **motor mínimo F3-3b parcial ya
   operativo** (`WhatsappEventsWorker` → cola `llm-jobs` → `LlmJobsWorker` → `ConversationEngineService.respond()`,
   tabla `llm_runs` con dedup `requestId=wa:<messageId>`). Falta para cerrarlo: tools de negocio
-  (`ToolCatalog` hoy vacío), handoff a humano (F6-3), gasto por tenant y tests (engine/prompt/executor/workers).
+  (`ToolCatalog` hoy vacío), handoff a humano (F6-3), gasto por tenant y tests del executor/prompt/workers
+  (el engine ya tiene specs parciales; los eventos realtime del engine están cubiertos desde M12).
 - Modelos de negocio asociados: catálogos, productos/servicios, clientes, pedidos, reservas, agenda.
 
 ## Pendientes de cierre de Fase 1
 
 - ~~**Proveedor real de email**~~ → **hecho (03/10):** `ResendEmailAdapter` (SDK `resend`) detrás de `EMAIL_DRIVER`, ghost `mock` bloqueado en producción (ADR-009). Antes se usaba `MockEmailAdapter`.
 - ~~**Recuperación de contraseña**~~ → **hecho (03/10):** `POST /v1/auth/forgot-password` y `POST /v1/auth/reset-password` (token 1-uso de 15 min, `invalid_token` unificado, revocación de sesiones; ADR-009).
-- **Web**: la app Next.js es solo un panel de estado; falta consumir la API y construir el onboarding/dashboard de gestión del tenant.
+- ~~**Web**: la app Next.js es solo un panel de estado; falta consumir la API.~~ → **hecho (07/10, M11):** panel
+  completo consumiendo la API (auth, embedded signup, inbox, detalle con respuesta manual, runs del LLM)
+  + **live updates (M12):** tiempo real por SSE (Redis pub/sub worker↔API) con polling de 60s como respaldo.
+  Pendiente web: traspaso a humano (F6-3) en el detalle de conversación.
 
 ## Deudas técnicas menores
 
